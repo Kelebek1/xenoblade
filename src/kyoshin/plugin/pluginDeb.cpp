@@ -1,14 +1,10 @@
 #include "kyoshin/plugin/pluginDeb.hpp"
 
 static PluginFuncData sPluginDebFuncs[] = {
-    {"put", deb_put},
-    {"performanceStart", deb_performanceStart},
-    {"performanceEnd", deb_performanceEnd},
-    {NULL,NULL}
-};
+    {"put", deb_put}, {"performanceStart", deb_performanceStart}, {"performanceEnd", deb_performanceEnd}, {NULL, NULL}};
 
 //This was probably used to print debug messages, but is stubbed in the release version.
-int deb_put(VMThread* pThread){
+int deb_put(VMThread* pThread) {
     return 0;
 }
 
@@ -23,6 +19,6 @@ int deb_performanceEnd(VMThread* pThread) {
     return 0;
 }
 
-void pluginDebRegist(){
+void pluginDebRegist() {
     vmPluginRegist("deb", sPluginDebFuncs);
 }

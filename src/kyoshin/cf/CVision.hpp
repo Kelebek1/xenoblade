@@ -1,19 +1,20 @@
 #pragma once
 
 #include <types.h>
+
 #include "kyoshin/cf/object/IObjectInfo.hpp"
 
-namespace cf{
+namespace cf {
     class UnkClass_801A36D0 {
     public:
-        ~UnkClass_801A36D0(){}
+        ~UnkClass_801A36D0() {}
 
         u8 unk0[0x4818];
     };
 
     class UnkClass_801A3728 {
     public:
-        ~UnkClass_801A3728(){}
+        ~UnkClass_801A3728() {}
 
         u8 unk0[0x70];
         u16 unk70;
@@ -33,9 +34,9 @@ namespace cf{
         //0x0: vtable
         //0x0-4: IObjectInfo
         u8 unk4[0x20D4 - 0x4];
-        UnkClass_801A36D0 unk20D4[8]; //0x20D4
+        UnkClass_801A36D0 unk20D4[8];   //0x20D4
         u8 unk26194[0x261C4 - 0x26194]; //0x26194
-        UnkClass_801A3728 unk261C4; //0x261C4
+        UnkClass_801A3728 unk261C4;     //0x261C4
     };
 
-}
+} //namespace cf

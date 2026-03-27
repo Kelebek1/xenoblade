@@ -1,13 +1,13 @@
 #pragma once
 
-#include "monolib/work.hpp"
 #include "monolib/device.hpp"
+#include "monolib/work.hpp"
 
-namespace cf{
+namespace cf {
 
     class CfBdat : IWorkEvent {
     public:
-        CfBdat(){}
+        CfBdat() {}
         virtual ~CfBdat();
         virtual bool OnFileEvent(CEventFile* pEventFile);
 

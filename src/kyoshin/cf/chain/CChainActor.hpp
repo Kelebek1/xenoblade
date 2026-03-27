@@ -1,8 +1,10 @@
 #pragma once
 
 #include <types.h>
-#include "kyoshin/cf/chain/CChainTemp.hpp"
+
 #include "kyoshin/cf/chain/CChainEffect.hpp"
+#include "kyoshin/cf/chain/CChainTemp.hpp"
+
 #include <cstring>
 
 namespace cf {
@@ -21,4 +23,4 @@ namespace cf {
 
         CChainEffect mChainEffect; //0x74
     };
-}
+} //namespace cf

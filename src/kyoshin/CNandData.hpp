@@ -14,8 +14,7 @@ public:
         mNandBanner.unkC &= ~0x10;
     }
 
-    ~CNandData(){
-    }
+    ~CNandData() {}
 
 private:
     static const char* scNandTitleText;

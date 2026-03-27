@@ -1,6 +1,7 @@
 #pragma once
 
 #include <types.h>
+
 #include "kyoshin/cf/chain/UnkClass_8027AD70.hpp"
 #include "monolib/util.hpp"
 
@@ -17,4 +18,4 @@ namespace cf {
         CChainActorList();
         virtual ~CChainActorList();
     };
-}
+} //namespace cf

@@ -1,9 +1,11 @@
 #pragma once
 
 #include <types.h>
+
 #include "monolib/core.hpp"
-#include "monolib/work.hpp"
 #include "monolib/lib.hpp"
+#include "monolib/work.hpp"
+
 #include <nw4r/lyt/lyt_arcResourceAccessor.h>
 #include <nw4r/lyt/lyt_layout.h>
 #include <nw4r/lyt/lyt_pane.h>
@@ -20,11 +22,11 @@ public:
     void updateBatteryImage();
     void func_802B94B0();
     virtual bool OnFileEvent(CEventFile* pEventFile);
-    
+
     UnkClass_8045F564 unk4;
     CFileHandle* mFileHandle;
     nw4r::lyt::ArcResourceAccessor* mAccessor; //0x18
-    nw4r::lyt::Layout* mLayout; //0x1C
+    nw4r::lyt::Layout* mLayout;                //0x1C
     bool unk20;
     s8 unk21;
     bool unk22;

@@ -1,24 +1,29 @@
 #pragma once
 
 #include <types.h>
-#include "kyoshin/cf/object/CfObjectMove.hpp"
+
 #include "kyoshin/cf/CfPadData.hpp"
-#include "monolib/scn.hpp"
+#include "kyoshin/cf/object/CfObjectMove.hpp"
 #include "monolib/core.hpp"
+#include "monolib/scn.hpp"
 
 /* TODO: it's possible this file contains multiple separate classes, either just all being put in here,
 or due to being in separate files, but compiled together in one file (unity compilation). For now,
 to make things simpler, everything exists in a single class. */
 namespace cf {
 
-    //min size: 0xb8
     //unofficial name
-    class CfGameManager{
+    class CfGameManager {
     public:
         static CfGameManager* getInstance();
+        static CfGameManager* init(CScnNw4r* spSene, CView* pView, bool arg3);
 
+        static void func_80086B5C(int arg1, int arg2, int arg3);
         static void enablePadFlags(u32 enableFlags, bool enable);
         static bool func_8007E1B4();
+        static void func_8007E218();
+        static void func_8007E514(int, int, char const*, int, int);
+        static void func_8007F930(bool arg1);
         static UNKWORD func_800829B8();
         static u32 getCurrentPadChannel();
         static UNKTYPE* func_80083298();
@@ -30,12 +35,11 @@ namespace cf {
         static CfPadData* getCfPadData();
         static CPad* getCurrentPad();
 
-
-        static bool checkUnkFlag(int bit){
+        static bool checkUnkFlag(int bit) {
             return sUnkFlags & (1 << bit);
         }
 
-        static void setUnkFlag(int bit, bool state){
+        static void setUnkFlag(int bit, bool state) {
             if(state == true) sUnkFlags |= (1 << bit);
             else sUnkFlags &= ~(1 << bit);
         }
@@ -66,6 +70,6 @@ namespace cf {
 
         static u32 sUnkFlags;
         static CScnNw4r* spScene;
-    };
+    }; //size = 0xB8
 
-}
+} //namespace cf

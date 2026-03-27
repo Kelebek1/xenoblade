@@ -1,6 +1,7 @@
 #pragma once
 
 #include <types.h>
+
 #include "kyoshin/cf/chain/CChainEffect.hpp"
 
 namespace cf {
@@ -11,11 +12,11 @@ namespace cf {
         CChainEffect mChainEffect; //0x8
         //0x14: vtable
 
-        CChainTime(){}
-        virtual ~CChainTime(){
+        CChainTime() {}
+        virtual ~CChainTime() {
             func_8027CE30();
         }
-        
+
         void func_8027CE30();
     };
-}
+} //namespace cf

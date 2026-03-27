@@ -3,7 +3,5 @@
 #include <types.h>
 
 namespace cf {
-    class TBoxInfo {
-
-    };
-}
+    class TBoxInfo {};
+} //namespace cf

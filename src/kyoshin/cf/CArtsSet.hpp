@@ -1,10 +1,11 @@
 #pragma once
 
 #include <types.h>
+
 #include <cstring>
 
 namespace cf {
-    
+
     //size: 0x88
     class CAttackParam {
     public:
@@ -56,7 +57,7 @@ namespace cf {
 
         CAttackParam();
 
-        virtual void CAttackParam_UnkVirtualFunc1(){ //0x8
+        virtual void CAttackParam_UnkVirtualFunc1() { //0x8
             unk0 = 0;
             unk20 = 0;
             unk24 = 0;
@@ -93,26 +94,24 @@ namespace cf {
             unk74 = 0;
             unk77 = 0;
             unk7C = 0;
-            unk80 = 0;  
+            unk80 = 0;
 
             std::memset(unk38, 0, sizeof(unk38));
             std::memset(unk6C, 0, sizeof(unk6C));
         }
-        virtual u8 CAttackParam_UnkVirtualFunc2(); //0xC
+        virtual u8 CAttackParam_UnkVirtualFunc2();        //0xC
         virtual void CAttackParam_UnkVirtualFunc3(u8 r4); //0x10
-        virtual void CAttackParam_UnkVirtualFunc4(); //0x14
-
+        virtual void CAttackParam_UnkVirtualFunc4();      //0x14
     };
 
-    struct _sAttackSet {
-    };
+    struct _sAttackSet {};
 
     //size: 0x334
     class CAttackSet : _sAttackSet {
     public:
-        CAttackSet(){}
+        CAttackSet() {}
         virtual void func_80153E88();
-        
+
         //0x0: vtable
         CAttackParam mAttackParams[6]; //0x4
     };
@@ -138,7 +137,7 @@ namespace cf {
         //0x34: vtable
 
         _sArtsSet();
-        virtual void _sArtsSet_UnkVirtualFunc1(){ //0x8
+        virtual void _sArtsSet_UnkVirtualFunc1() { //0x8
             unk0 = 0;
             std::memset(unk4, 0, sizeof(unk4));
         }
@@ -147,11 +146,11 @@ namespace cf {
     //size: 0xD58
     class CArtsSet : _sArtsSet {
     public:
-        CArtsSet(){}
+        CArtsSet() {}
         virtual void _sArtsSet_UnkVirtualFunc1(); //0x8
 
         //0x0: vtable
         //0x0-38: _sArtsSet
         CArtsParam mArtsParams[24]; //0x38
     };
-};
+}; //namespace cf

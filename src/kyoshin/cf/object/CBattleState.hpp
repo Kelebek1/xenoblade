@@ -43,4 +43,4 @@ namespace cf {
 
         u8 unkC[0x15DC - 0xC];
     };
-}
+} //namespace cf

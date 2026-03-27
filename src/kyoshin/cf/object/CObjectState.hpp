@@ -23,4 +23,4 @@ namespace cf {
         //0x0: vtable
         u8 unk4_3[0xC];
     };
-}
+} //namespace cf

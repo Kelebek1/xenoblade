@@ -3,7 +3,5 @@
 #include <types.h>
 
 namespace cf {
-    class CDebugState {
-
-    };
-}
+    class CDebugState {};
+} //namespace cf

@@ -9,6 +9,6 @@ namespace cf {
         u16 unk0;
         u8 unk2[2];
         //0x4: vtable
-        virtual ~CChainTimer(){}
+        virtual ~CChainTimer() {}
     };
-}
+} //namespace cf

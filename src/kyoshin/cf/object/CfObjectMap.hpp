@@ -1,6 +1,7 @@
 #pragma once
 
 #include <types.h>
+
 #include "kyoshin/cf/object/CfObjectModel.hpp"
 
 namespace cf {
@@ -11,4 +12,4 @@ namespace cf {
         //0x0-BE: CfObjectModel
         u8 unkBE[0x2E92];
     };
-}
+} //namespace cf

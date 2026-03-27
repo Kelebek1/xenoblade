@@ -1,69 +1,70 @@
 #pragma once
 
-#include <cstring>
 #include <cstdio>
+#include <cstring>
 
-namespace ml{
+namespace ml {
 
-    template <size_t N>
-    struct FixStr{
-        FixStr(){
+    template <size_t N> struct FixStr {
+        FixStr() {
             clear();
         }
 
         //probably fake
-        FixStr(bool initialize){
-            if(initialize){
+        FixStr(bool initialize) {
+            if(initialize) {
                 clear();
             }
         }
 
-        FixStr(const FixStr<N>& str){
+        FixStr(const FixStr<N>& str) {
             *this = str;
         }
 
-        FixStr(const char* str){
+        FixStr(const char* str) {
             *this = str;
         }
 
-        FixStr(const FixStr<N>& str, int pos, int length){
+        FixStr(const FixStr<N>& str, int pos, int length) {
             copy(str, pos, length);
         }
 
-        void copy(const FixStr<N>& str, int pos, int length){
+        void copy(const FixStr<N>& str, int pos, int length) {
             clear();
-            if (str.empty()) return;
+            if(str.empty())
+                return;
 
             //Copy entire string if length is -1
-            if (length == npos) length = str.size();
+            if(length == npos)
+                length = str.size();
             std::strncpy(mString, str.mString + pos, length);
             //Stop the string after the copied characters, and recalculate the length
             mString[length] = 0;
             mLength = std::strlen(mString);
         }
 
-        void clear(){
+        void clear() {
             mString[0] = 0;
             mLength = 0;
         }
 
-        void operator=(const FixStr<N>& str){
+        void operator=(const FixStr<N>& str) {
             mLength = std::strlen(str.mString);
             std::strcpy(mString, str.mString);
         }
 
-        void operator=(const char* str){
+        void operator=(const char* str) {
             mLength = std::strlen(str);
             std::strcpy(mString, str);
         }
 
-        void operator+=(const FixStr<N>& str){
+        void operator+=(const FixStr<N>& str) {
             int strLength = std::strlen(str.mString);
             std::strcat(mString, str.mString);
             mLength += strLength;
         }
 
-        void operator+=(const char* str){
+        void operator+=(const char* str) {
             int strLength = std::strlen(str);
             std::strcat(mString, str);
             mLength += strLength;
@@ -98,8 +99,8 @@ namespace ml{
         bool empty() const {
             return size() == 0;
         }
-        
-        void format(const char* format, ...){
+
+        void format(const char* format, ...) {
             //Why hardcode the buffer size to 256??
             char buffer[256];
             va_list args;
@@ -122,32 +123,27 @@ namespace ml{
         //slice(int){}
 
         //also has version with const char& and const FixStr<64>&
-        int append_back(const char* str){
+        int append_back(const char* str) {}
 
-        }
+        int append_front(const char* str) {}
 
-        int append_front(const char* str){
-
-        }
-
-        int find(const char* str, int pos) const {
-
-        }
+        int find(const char* str, int pos) const {}
 
         int rfind(const char* str, int pos = npos) const {
             int length = mLength;
-            
-            if (length == 0) {
+
+            if(length == 0) {
                 //Return -1 if the string is empty
                 return npos;
             }
-            
+
             int strLength = std::strlen(str);
 
-            char* string = (char*)mString + pos;
+            char* start = (char*)mString - 1;
+            char* p = (char*)mString + length - 1;
 
-            for (char* p = string + length; p != string; p--) {
-                if (!std::strncmp(p, str, strLength)) {
+            while(--p != start) {
+                if(!std::strncmp(p, str, strLength)) {
                     return (int)(p - mString);
                 }
             }
@@ -156,15 +152,13 @@ namespace ml{
             return npos;
         }
 
-        int find_last_of(char c, int pos) const {
-
-        }
+        int find_last_of(char c, int pos) const {}
 
         //TODO: this might be a CPathUtil inline?
-        void unkInline1(const char* str){
+        void unkInline1(const char* str) {
             int index = rfind(str, -1);
 
-            if(index != -1 && index + 1 < mLength){
+            if(index != -1 && index + 1 < mLength) {
                 mString[index + 1] = 0;
                 mLength = index;
             }
@@ -178,4 +172,4 @@ namespace ml{
         static const int npos = -1;
     };
 
-}
+} //namespace ml

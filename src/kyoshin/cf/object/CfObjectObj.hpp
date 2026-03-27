@@ -1,6 +1,7 @@
 #pragma once
 
 #include <types.h>
+
 #include "kyoshin/cf/object/CfObjectMove.hpp"
 
 namespace cf {
@@ -10,4 +11,4 @@ namespace cf {
         //0x0: vtable 1
         //0x0-718: CfObjectMove
     };
-}
+} //namespace cf

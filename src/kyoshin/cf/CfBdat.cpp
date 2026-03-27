@@ -1,4 +1,5 @@
 #include "kyoshin/cf/CfBdat.hpp"
+
 #include "kyoshin/plugin/ocBdat.hpp"
 #include "monolib/util.hpp"
 
@@ -6,7 +7,7 @@ extern u32 func_800AA714(const char* pString);
 
 using namespace ml;
 
-namespace cf{
+namespace cf {
     void* CfBdat::spBtlPcListFileData;
     void* CfBdat::spBtlEneListFileData;
     void* CfBdat::spFldNpcListFileData;
@@ -81,25 +82,13 @@ namespace cf{
     CfBdat CfBdat::lbl_80666A80;
     void* CfBdat::lbl_80666A84;
 
-    
     void* CfBdat::lbl_80577510[28];
 
-    const char* CfBdat::lbl_80531EC0[] = {
-        "",
-        "EXwp_L",
-        "EXwp_R",
-        "EXwp_S",
-        "EXwp_S",
-        "EXwp_H",
-        "EXwp_HL",
-        "EXwp_HR",
-        "EXwp_HR"
-    };
+    const char* CfBdat::lbl_80531EC0[] = {"", "EXwp_L", "EXwp_R", "EXwp_S", "EXwp_S", "EXwp_H", "EXwp_HL", "EXwp_HR", "EXwp_HR"};
 
-    CfBdat::~CfBdat(){
-    }
+    CfBdat::~CfBdat() {}
 
-    void CfBdat::func_801414CC(){
+    void CfBdat::func_801414CC() {
         CBdat::func_8003AA34();
         spBtlPcListFileData = CBdat::getFP("BTL_pclist");
         spBtlEneListFileData = CBdat::getFP("BTL_enelist");
@@ -131,18 +120,17 @@ namespace cf{
         spItmArmListFileData = CBdat::getFP("ITM_armlist");
         spItmWaistListFileData = CBdat::getFP("ITM_waistlist");
         spItmLeggListFileData = CBdat::getFP("ITM_legglist");
-        
+
         lbl_80666A74 = nullptr;
         lbl_80666A78 = nullptr;
         lbl_80666A7C = 0;
         lbl_8066698C = nullptr;
-        
+
         spBtlPsvSkillFileData = CBdat::getFP("BTL_PSVskill");
         spBtlPsvLinkFileData = CBdat::getFP("BTL_PSVlink");
         spBtlPssListFileData = CBdat::getFP("BTL_PSSlist");
 
-        const char* temp[ARRAY_SIZE(lbl_80577510)] = {
-            "JNL_quest0000",
+        const char* temp[ARRAY_SIZE(lbl_80577510)] = {"JNL_quest0000",
             "JNL_quest0101",
             "JNL_quest0201",
             "JNL_quest0301",
@@ -168,21 +156,20 @@ namespace cf{
             "JNL_quest2101",
             "JNL_quest2201",
             "JNL_quest2301",
-            "JNL_quest2401"
-        };
+            "JNL_quest2401"};
 
-        for(int i = 0; i < (int)ARRAY_SIZE(lbl_80577510); i++){
+        for(int i = 0; i < (int)ARRAY_SIZE(lbl_80577510); i++) {
             lbl_80577510[i] = CBdat::getFP(temp[i]);
         }
 
         resetMapBdatFileDataPointers();
 
-        if(lbl_80666A6C != nullptr){
+        if(lbl_80666A6C != nullptr) {
             CDeviceFile::cancel(lbl_80666A6C);
             lbl_80666A6C = nullptr;
         }
 
-        if(lbl_80666A70 != nullptr){
+        if(lbl_80666A70 != nullptr) {
             CBdat::func_8003AA8C(3);
             DELETE_OBJ(lbl_80666A70);
         }
@@ -191,7 +178,7 @@ namespace cf{
         lbl_80666A6C = nullptr;
     }
 
-    void CfBdat::resetMapBdatFileDataPointers(){
+    void CfBdat::resetMapBdatFileDataPointers() {
         spCurRouteListFileData = nullptr;
         spCurMapEffListFileData = nullptr;
         spCurMapObjListFileData = nullptr;
@@ -216,12 +203,12 @@ namespace cf{
         spCurDropSprListFileData = nullptr;
     }
 
-    //This feels a bit janky, but if it works it works :p
-    #define GET_MAP_BDAT_PTR(dest, name) \
-    string.format(STR(name)"%02d%02d", mapId, areaId); \
+//This feels a bit janky, but if it works it works :p
+#define GET_MAP_BDAT_PTR(dest, name)                                                                                                       \
+    string.format(STR(name) "%02d%02d", mapId, areaId);                                                                                    \
     dest = CBdat::getFP(string.c_str());
 
-    void CfBdat::loadMapBdatFileDataPointers(int mapId, int areaId){
+    void CfBdat::loadMapBdatFileDataPointers(int mapId, int areaId) {
         FixStr<64> string;
 
         GET_MAP_BDAT_PTR(spCurRouteListFileData, routelist);
@@ -248,12 +235,12 @@ namespace cf{
         GET_MAP_BDAT_PTR(spCurDropSprListFileData, drop_sprlist);
     }
 
-    void* CfBdat::func_80141B20(const char* pName){
+    void* CfBdat::func_80141B20(const char* pName) {
         void* fileDataPtr;
 
-        if(pName != nullptr){
+        if(pName != nullptr) {
             fileDataPtr = CBdat::getFP(pName);
-        }else{
+        } else {
             fileDataPtr = nullptr;
         }
 
@@ -261,21 +248,21 @@ namespace cf{
         return fileDataPtr;
     }
 
-    const char* CfBdat::func_801421C4(u16 index){
+    const char* CfBdat::func_801421C4(u16 index) {
         return nullptr;
     }
 
-    u32 CfBdat::func_801422A8(u32 param1){
-        if(param1 != 0){
+    u32 CfBdat::func_801422A8(u32 param1) {
+        if(param1 != 0) {
             if((param1 >> 27) == 5) return param1;
             u32 r30 = 0;
-            if((param1 & 0xFFFF) != 0){
+            if((param1 & 0xFFFF) != 0) {
                 void* data = spItmWpnListFileData;
                 u16 unk12 = CBdat::func_8003B41C(data);
                 u16 unkC = CBdat::func_8003B1EC(data);
                 u16 r0 = unk12 + unkC;
                 s32 temp = (param1 & 0xFFFF);
-                if(temp < r0){
+                if(temp < r0) {
                     r30 = func_800AA714(CBdat::getBdatStringColumnValue(data, "resource", temp));
                 }
             }
@@ -285,20 +272,20 @@ namespace cf{
         return 0;
     }
 
-    const char* CfBdat::func_801424A8(u16 index){
+    const char* CfBdat::func_801424A8(u16 index) {
         return lbl_80531EC0[index];
     }
 
-    bool CfBdat::OnFileEvent(CEventFile* pEventFile){
+    bool CfBdat::OnFileEvent(CEventFile* pEventFile) {
         bool result = false;
 
-        if(lbl_80666A6C == pEventFile->mFileHandle){
-            if(pEventFile->unk0 == 1 && *(u32*)((u32)pEventFile + 0x14) != 0){
+        if(lbl_80666A6C == pEventFile->mFileHandle) {
+            if(pEventFile->unk0 == 1 && *(u32*)((u32)pEventFile + 0x14) != 0) {
                 CBdat::func_8003AA78(3, lbl_80666A70);
                 spMnuEveStartFileData = CBdat::getFP("MNU_eve_start");
                 spMnuEveTableFileData = CBdat::getFP("MNU_eve_table");
             }
-            
+
             lbl_80666A6C = nullptr;
             result = true;
         }
@@ -306,4 +293,4 @@ namespace cf{
         return result;
     }
 
-}
+} //namespace cf

@@ -1,10 +1,12 @@
 #pragma once
 
 #include <types.h>
+
 #include "kyoshin/cf/CfPadData.hpp"
-#include "monolib/work.hpp"
 #include "monolib/core.hpp"
 #include "monolib/lib.hpp"
+#include "monolib/work.hpp"
+
 #include <revolution/WPAD.h>
 
 namespace cf {
@@ -17,7 +19,7 @@ namespace cf {
         virtual void Init();
         virtual void Move();
         virtual void Term();
-        
+
         virtual bool gameExceptionCB(u32 r4);
         virtual void onInitHbm();
         virtual void onDeleteHbm();
@@ -43,12 +45,12 @@ namespace cf {
         //0x0-54: CTTask
         //0x54: vtable 2 (IGameException)
         //0x58: vtable 3 (IHBMCallback)
-        int mErrorFrameCount; //0x5C
+        int mErrorFrameCount;   //0x5C
         int mNoErrorFrameCount; //0x60
-        int mFrameCounter; //0x64
+        int mFrameCounter;      //0x64
 
     private:
-        enum ControllerError{
+        enum ControllerError {
             ERROR_NONE,
             ERROR_WIIMOTE_DISCONNECTED,
             ERROR_NUNCHUCK_DISCONNECTED,
@@ -56,7 +58,7 @@ namespace cf {
             ERROR_NO_EXTENSION
         };
 
-        enum PadExtension{
+        enum PadExtension {
             PAD_EXT_INVALID,
             PAD_EXT_NUNCHUCK,
             PAD_EXT_CLASSIC_CONTROLLER,
@@ -82,4 +84,4 @@ namespace cf {
 
         static CfPadTask* spInstance;
     };
-}
+} //namespace cf

@@ -7,4 +7,4 @@ namespace cf {
     public:
         static void func_801BFC38(u32 r3, u32 r4, u32 r5, u32 r6, float f1);
     };
-}
+} //namespace cf

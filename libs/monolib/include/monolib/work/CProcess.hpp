@@ -30,6 +30,10 @@ public:
     void Regist(CProcess* parent, bool insertTop);
     void Remove();
 
+    void SetRemove() {
+        mIsRemove = true;    
+    }
+
 private:
     //0x0-10: CDoubleListNode
     //0x10: vtable

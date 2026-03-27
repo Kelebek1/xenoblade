@@ -7,5 +7,4 @@
 class CMenuFade : public IUICf, public IWorkEvent, public IScnRender {
 public:
     CMenuFade();
-
 };

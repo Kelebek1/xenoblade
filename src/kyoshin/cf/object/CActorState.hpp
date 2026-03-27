@@ -7,10 +7,10 @@ namespace cf {
     public:
         virtual void CActorState_UnkVirtualFunc1(); //0x8
 
-        CActorState(UNKTYPE* r4){
+        CActorState(UNKTYPE* r4) {
             unk4 = r4;
         }
 
         UNKTYPE* unk4;
     };
-}
+} //namespace cf

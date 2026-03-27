@@ -14,7 +14,7 @@ namespace cf {
         //0x0: vtable
         u8 unk4[0xB18]; //temporary
     };
-}
+} //namespace cf
 
 extern void func_8014A86C(void*);
 extern void func_8014A8F8();
