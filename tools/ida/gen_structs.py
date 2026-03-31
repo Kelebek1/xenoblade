@@ -88,24 +88,40 @@ def get_included_headers(source_files, index):
                 print(f"Unknown compile lang {compile_lang}")
                 exit()
         args.append(compile_lang)
-        args.append("-nobuiltininc")
         args.append("-nostdlibinc")
         args.append("-nostdinc")
         args.append("-nostdinc++")
+        args.append("--target=ppc32")
         args.extend([f"-I{include}" for include in compile_includes])
 
         #options = cindex.TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD | cindex.TranslationUnit.PARSE_SKIP_FUNCTION_BODIES
         options = cindex.TranslationUnit.PARSE_SKIP_FUNCTION_BODIES
 
         unit = index.parse(file_path, args=args, options=options)
+        source_files[k]["unit"] = unit
 
-        if "PowerPC" not in str(file_path):
+        has_def = False
+        for node in unit.cursor.get_children():
+            if "desc_info" in node.spelling:
+                has_def = True
+                break;
+        """
+        if has_def:
+            print(node.location.file)
+            for node in unit.cursor.get_children():
+                print(node.location.line, node.spelling, node.kind, node.type.kind)
+
+            exit()
+        """
+        #print(file_path, args)
+
+        if "PowerPC_EABI_Support" not in str(file_path) and "sj_crs.c" not in str(file_path):
             for diag in unit.diagnostics:
                 if diag.severity == cindex.Diagnostic.Error:
                     print(diag)
                     exit()
 
-        new_files = []
+        """
         for node in unit.cursor.get_children():
             if node.kind != cindex.CursorKind.INCLUSION_DIRECTIVE:
                 continue
@@ -126,11 +142,10 @@ def get_included_headers(source_files, index):
 
             include_path_str = str(include_path)
             if include_path_str not in source_files:
-                #print(f"Found include {include_path}")
+                #print(f"Found include {include_path}, parsing")
                 source_files[include_path_str] = {"path":include_path, "compile_include_paths":compile_includes, "compile_lang":compile_lang}
                 source_files |= parse_file(source_files, index, include_path_str)
-
-        source_files[k]["unit"] = unit
+        """
         return source_files
 
     root_files = list(source_files.keys())
@@ -161,7 +176,6 @@ cindex.conf.set_library_path(clang_path)
 index = cindex.Index.create()
 
 print(f"Parsing all included files...")
-
 source_files |= get_included_headers(source_files, index)
 
 print(f"Building types...")
@@ -169,24 +183,79 @@ print(f"Building types...")
 TYPES = {}
 
 def output_type_fields(node, name):
+    def align_up(v, to):
+        assert bin(to).count("1") == 1, f"to must be a power of 2!"
+        return (v + to - 1) & ~to
     TYPES[name]["fields"] = []
     total_size = 0
     for i,field in enumerate(node.type.get_fields()):
+        total_size = align_up(total_size, field.type.get_align())
         size = field.type.get_size()
         TYPES[name]["fields"].append({"name":field.spelling, "type":field.type.spelling, "size":size, "offset":total_size})
         total_size += size
 
+def output_typedef(node):
+    name = node.type.get_fully_qualified_name(policy=cindex.PrintingPolicy.create(node))
+
+    if name in TYPES:
+        return
+
+    TYPES[name] = {}
+
+    underlying_type = node.underlying_typedef_type.spelling
+
+    #if "GXTlutRegionCallback" in name:
+    #    print(node.spelling, underlying_type)
+    #    exit()
+
+    if "(" in underlying_type and underlying_type[-1] == ")":
+        TYPES[name]["kind"] = "typedef_func"
+    elif underlying_type.startswith("enum "):
+        TYPES[name]["kind"] = "typedef_enum"
+        underlying_type = underlying_type.split("enum ",1)[1]
+    elif underlying_type.startswith("struct "):
+        TYPES[name]["kind"] = "typedef_struct"
+        underlying_type = underlying_type.split("struct ",1)[1]
+    elif underlying_type.startswith("class "):
+        TYPES[name]["kind"] = "typedef_struct"
+        underlying_type = underlying_type.split("class ",1)[1]
+    else:
+        TYPES[name]["kind"] = "typedef"
+
+    TYPES[name]["size"] = node.type.get_size()
+    TYPES[name]["alignment"] = node.type.get_align()
+    TYPES[name]["real_type"] = underlying_type
+
+def output_enum(node):
+    name = node.type.get_fully_qualified_name(policy=cindex.PrintingPolicy.create(node))
+
+    if "(unnamed" in name:
+        name = f"__unnamed_{node.location.file}_{node.location.line}"
+
+    if name in TYPES:
+        return
+
+    TYPES[name] = {}
+    TYPES[name]["kind"] = "enum"
+    TYPES[name]["size"] = node.type.get_size()
+    TYPES[name]["alignment"] = node.type.get_align()
+    TYPES[name]["real_type"] = node.enum_type.spelling
+
+    TYPES[name]["fields"] = []
+    for child in node.get_children():
+        enum_name = child.spelling
+        enum_value = child.enum_value
+        TYPES[name]["fields"].append({"name":enum_name, "value":enum_value})
+
+    #print(name, TYPES[name])
+
 def parse_node(node):
     if node.kind == cindex.CursorKind.TYPEDEF_DECL:
-        name = node.type.get_fully_qualified_name(policy=cindex.PrintingPolicy.create(node))
-
-        TYPES[name] = {}
-        TYPES[name]["type"] = "typedef"
-        TYPES[name]["size"] = node.type.get_size()
-        TYPES[name]["alignment"] = node.type.get_align()
-        TYPES[name]["real_type"] = node.underlying_typedef_type.spelling
-
+        output_typedef(node)
         #print(f"typedef {TYPES[name]['real_type']} {name};")
+
+    elif node.kind == cindex.CursorKind.ENUM_DECL:
+        output_enum(node)
 
     elif node.kind == cindex.CursorKind.STRUCT_DECL:
         name = node.type.get_fully_qualified_name(policy=cindex.PrintingPolicy.create(node))
@@ -196,7 +265,7 @@ def parse_node(node):
         #print(f"{node.location.file}:{node.location.line} -- {node.type.spelling}")
 
         TYPES[name] = {}
-        TYPES[name]["type"] = "struct"
+        TYPES[name]["kind"] = "struct"
         TYPES[name]["size"] = node.type.get_size()
         TYPES[name]["alignment"] = node.type.get_align()
 
@@ -208,7 +277,7 @@ def parse_node(node):
             return
 
         TYPES[name] = {}
-        TYPES[name]["type"] = "class"
+        TYPES[name]["kind"] = "class"
         TYPES[name]["size"] = node.type.get_size()
         TYPES[name]["alignment"] = node.type.get_align()
 
@@ -250,10 +319,25 @@ BUILTIN_TYPES = {
     "double",
     "void",
     "nullptr",
+    "bool",
 }
 
 def needs_output(name):
     return not (name in BUILTIN_TYPES or name in TYPES_OUTPUT)
+
+def split_type_array(t):
+    arr = ""
+    if "[" in t:
+        t, arr = t.split("[",1)
+        arr = "[" + arr
+    return t, arr
+
+def get_prefix(t):
+    prefix = ""
+    if t in TYPES:
+        if TYPES[t]["kind"] == "struct" or TYPES[t]["kind"] == "class":
+            prefix = "struct "
+    return prefix
 
 def output_type(k):
     global TYPES_OUTPUT
@@ -266,13 +350,63 @@ def output_type(k):
 
     ret = ""
 
-    match entry["type"]:
+    match entry["kind"]:
         case "typedef":
-            if needs_output(entry['real_type']):
-                output_type(entry['real_type'])
+            t, arr = split_type_array(entry['real_type'])
+            prefix = get_prefix(t)
+
+            OUTPUT.append(f"typedef {prefix}{t} {name}{arr};")
+
+        case "typedef_func":
+            func_def = entry['real_type']
+            if "(*)" in func_def:
+                # typedef void (*ExitFunc)();
+                func_def = func_def.replace("(*)", f"(*{name})")
+            else:
+                # doesn't contain the pointer, so also doesn't have ()
+                # typedef void (tL2CA_UCD_DISCOVER_CB) (BD_ADDR, UINT8, UINT32);
+                ret_args = func_def.split(' ',1)
+                func_def = f"{ret_args[0]} {name}{ret_args[1]}"
+            OUTPUT.append(f"typedef {func_def};")
+
+        case "typedef_enum":
             OUTPUT.append(f"typedef {entry['real_type']} {name};")
 
+        case "typedef_struct":
+            t, arr = split_type_array(entry['real_type'])
+            prefix = get_prefix(t)
+            OUTPUT.append(f"typedef {prefix}{t} {name}{arr};")
+
+        case "typedef_class":
+            t, arr = split_type_array(entry['real_type'])
+            prefix = get_prefix(t)
+            OUTPUT.append(f"typedef {prefix}{t} {name}{arr};")
+
+        case "enum":
+            if name.startswith("__unnamed"):
+                OUTPUT.append(f"enum {{")
+            else:
+                OUTPUT.append(f"enum {name} {{")
+
+            for enum_entry in entry["fields"]:
+                OUTPUT.append(f"{enum_entry['name']} = {enum_entry['value']},")
+
+            OUTPUT.append("};")
+
+        case "struct":
+            OUTPUT.append(f"struct {name};")
+
+        case "class":
+            OUTPUT.append(f"struct {name};")
+
+        #case _:
+        #    print(f"Unhandled typedef type {entry['kind']}")
+        #    exit()
+
 for k in TYPES.keys():
+    #print(f"{k} -- {TYPES[k]}")
     output_type(k)
 
-print("\n".join(output))
+#print("\n".join(OUTPUT))
+out_path = Path(__file__).parent /  "structs.h"
+out_path.write_text("\n".join(OUTPUT))

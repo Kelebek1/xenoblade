@@ -13,7 +13,7 @@ const PTMF __ptmf_null = { 0, 0, 0 };
 
 long __ptmf_test(PTMF* ptmf);
 long __ptmf_cmpr(PTMF *ptmf1, PTMF *ptmf2);
-void __ptmf_scall(...);
+void __ptmf_scall(PTMF* ptmf, ...);
 
 
 asm long __ptmf_test(register PTMF* ptmf)
@@ -63,7 +63,7 @@ void __ptmf_call4(void)
 {
 }
 
-asm void __ptmf_scall(...)
+asm void __ptmf_scall(PTMF* ptmf, ...)
 {
     nofralloc
     lwz     r0, PTMF.this_delta(r12)
