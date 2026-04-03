@@ -2291,9 +2291,16 @@ class Cursor(Structure):
             children.append(child)
             return 1  # continue
 
-        children: list[Cursor] = []
-        conf.lib.clang_visitChildren(self, cursor_visit_callback(visitor), children)
-        return iter(children)
+        if not hasattr(self, "_children"):
+            self._children: list[Cursor] = []
+            conf.lib.clang_visitChildren(self, cursor_visit_callback(visitor), self._children)
+        return iter(self._children)
+
+    @cursor_null_guard
+    def has_children(self) -> bool:
+        if not hasattr(self, "_children"):
+            self.get_children()
+        return len(self._children) > 0
 
     @cursor_null_guard
     def walk_preorder(self) -> Iterator[Cursor]:
