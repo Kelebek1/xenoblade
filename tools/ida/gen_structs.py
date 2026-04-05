@@ -4,6 +4,7 @@ from pathlib import Path
 import cindex
 
 PROJECT_PATH = Path(Path(__file__).parent.parent.parent)
+check_type = type
 
 def get_ninja_sources():
     def parse_build(ninja, i):
@@ -102,126 +103,10 @@ def print_node(node):
             extra = ""
             if td:
                 extra = f"{td.spelling} {td.kind} -- {td.get_declaration().spelling} {td.get_declaration().kind}"
-            print(f"{i}{n.location.file}:{n.location.line}:{n.location.column}:", n.spelling, n.kind, n.type.kind, extra)
+            print(f"{i}{n.location.file}:{n.location.line}:{n.location.column}:", n.spelling, n.kind, n.type.kind, extra, f"children:{len(list(n.get_children()))}")
             print_all_children(n, indent + 1)
-    print(f"{node.location.file}:{node.location.line}:{node.location.column}:", node.spelling, node.kind, node.type.kind)
+    print(f"{node.location.file}:{node.location.line}:{node.location.column}:", node.spelling, node.kind, node.type.kind, f"children:{len(list(node.get_children()))}")
     print_all_children(node, 1)
-
-def is_builtin_type(type):
-    return cindex.TypeKind.FIRSTBUILTIN.value <= type.kind.value <= cindex.TypeKind.LASTBUILTIN.value
-
-def builtin_type_to_string(type):
-    match type.kind:
-        case cindex.TypeKind.VOID:
-            return "void"
-        case cindex.TypeKind.BOOL:
-            return "bool"
-        case cindex.TypeKind.CHAR_U:
-            return "unsigned char"
-        case cindex.TypeKind.UCHAR:
-            return "unsigned char"
-        case cindex.TypeKind.CHAR16:
-            return "char16_t"
-        case cindex.TypeKind.CHAR32:
-            return "char32_t"
-        case cindex.TypeKind.USHORT:
-            return "unsigned short"
-        case cindex.TypeKind.UINT:
-            return "unsigned int"
-        case cindex.TypeKind.ULONG:
-            return "unsigned long"
-        case cindex.TypeKind.ULONGLONG:
-            return "unsigned long long"
-        case cindex.TypeKind.UINT128:
-            return "unsigned __int128"
-        case cindex.TypeKind.CHAR_S:
-            return "signed char"
-        case cindex.TypeKind.SCHAR:
-            return "signed char"
-        case cindex.TypeKind.WCHAR:
-            return "wchar_t"
-        case cindex.TypeKind.SHORT:
-            return "signed short"
-        case cindex.TypeKind.INT:
-            return "signed int"
-        case cindex.TypeKind.LONG:
-            return "signed long"
-        case cindex.TypeKind.LONGLONG:
-            return "signed long long"
-        case cindex.TypeKind.INT128:
-            return "signed __int128"
-        case cindex.TypeKind.FLOAT:
-            return "float"
-        case cindex.TypeKind.DOUBLE:
-            return "double"
-        case cindex.TypeKind.LONGDOUBLE:
-            return "long double"
-        case cindex.TypeKind.NULLPTR:
-            return "nullptr_t"
-        case _:
-            assert False
-            print(f"Unhandled built-in type {type.kind} from {type.spelling}")
-            exit()
-
-def create_identifying_key(node):
-    return f"{node.location.file}_{node.location.line}_{node.location.column}"
-
-def get_type_hash(node):
-    name_hash = hash(create_identifying_key(node))
-    return f"0x{abs(int(name_hash)):X}"
-
-def get_node_from_type(type):
-    if type.kind in (cindex.TypeKind.POINTER, cindex.TypeKind.LVALUEREFERENCE):
-        while type.kind in (cindex.TypeKind.POINTER, cindex.TypeKind.LVALUEREFERENCE, cindex.TypeKind.MEMBERPOINTER):
-            type = type.get_pointee()
-        type_node = type.get_declaration()
-    elif type.kind in (cindex.TypeKind.CONSTANTARRAY, cindex.TypeKind.VECTOR, cindex.TypeKind.INCOMPLETEARRAY, cindex.TypeKind.VARIABLEARRAY):
-        type_node = type.element_type.get_declaration()
-    else:
-        type_node = type.get_declaration()
-    return type_node
-
-def get_type_ida_name(node):
-    if type(node) is cindex.Type:
-        raw_type, raw_type_pointer_str = depointer_type(node)
-        if is_builtin_type(raw_type):
-            return f"{builtin_type_to_string(raw_type)}{raw_type_pointer_str}"
-        node = get_node_from_type(node)
-
-    raw_type, raw_type_pointer_str = depointer_type(node.type)
-
-    if is_builtin_type(raw_type):
-        return f"{builtin_type_to_string(raw_type)}{raw_type_pointer_str}"
-
-    if node.location.file is None:
-        return raw_type.spelling
-
-    printing_policy = cindex.PrintingPolicy.create(node)
-    name = raw_type.get_fully_qualified_name(policy=printing_policy)
-
-    if "(unnamed" in name or "(anonymous" in name:
-        name = f"__unnamed_{get_type_hash(node)}"
-
-    return name
-
-def get_name_ida_name(node, offset):
-    name = node.spelling
-
-    if not name or "(unnamed" in name or "(anonymous" in name:
-        name = f"unk{offset:X}"
-
-    return name
-
-def fix_func_decl(t, n):
-    if "(*)" in t:
-        # typedef void (*ExitFunc)();
-        t = t.replace("(*)", f"(*{n})")
-    else:
-        # doesn"t contain the pointer, so also doesn"t have ()
-        # typedef void (tL2CA_UCD_DISCOVER_CB) (BD_ADDR, UINT8, UINT32);
-        ret_args = t.split(" ",1)
-        t = f"{ret_args[0]} {n}{ret_args[1]}"
-    return t
 
 def depointer_type(type):
     pointer_str = ""
@@ -236,6 +121,239 @@ def depointer_type(type):
         type = type.get_pointee()
     return (type, pointer_str)
 
+BUILTINS = {
+    "void",
+    "bool",
+    "unsigned char",
+    "unsigned char",
+    "char16_t",
+    "char32_t",
+    "unsigned short",
+    "unsigned int",
+    "unsigned long",
+    "unsigned long long",
+    "unsigned __int128",
+    "signed char",
+    "signed char",
+    "wchar_t",
+    "signed short",
+    "signed int",
+    "signed long",
+    "signed long long",
+    "signed __int128",
+    "float",
+    "double",
+    "long double",
+    "nullptr_t",
+}
+
+def are_builtin_types_the_same(base1, base2):
+    if " " not in base1 and " " not in base2:
+        return base1 == base2
+
+    if " " not in base1 and base1 in ("char", "int", "short", "long", "__int128"):
+        base1 = f"signed {base1}"
+
+    if " " not in base2 and base2 in ("char", "int", "short", "long", "__int128"):
+        base2 = f"signed {base2}"
+
+    return base1 == base2
+
+def is_builtin_type(type):
+    return cindex.TypeKind.FIRSTBUILTIN.value <= type.kind.value <= cindex.TypeKind.LASTBUILTIN.value
+
+def builtin_type_to_ida_string(type, remove_spaces=False):
+    def builtin_type_to_string(type):
+        match type.kind:
+            case cindex.TypeKind.VOID:
+                return "void"
+            case cindex.TypeKind.BOOL:
+                return "bool"
+            case cindex.TypeKind.CHAR_U:
+                return "unsigned char"
+            case cindex.TypeKind.UCHAR:
+                return "unsigned char"
+            case cindex.TypeKind.CHAR16:
+                return "char16_t"
+            case cindex.TypeKind.CHAR32:
+                return "char32_t"
+            case cindex.TypeKind.USHORT:
+                return "unsigned short"
+            case cindex.TypeKind.UINT:
+                return "unsigned int"
+            case cindex.TypeKind.ULONG:
+                return "unsigned long"
+            case cindex.TypeKind.ULONGLONG:
+                return "unsigned long long"
+            case cindex.TypeKind.UINT128:
+                return "unsigned __int128"
+            case cindex.TypeKind.CHAR_S:
+                return "signed char"
+            case cindex.TypeKind.SCHAR:
+                return "signed char"
+            case cindex.TypeKind.WCHAR:
+                return "wchar_t"
+            case cindex.TypeKind.SHORT:
+                return "signed short"
+            case cindex.TypeKind.INT:
+                return "signed int"
+            case cindex.TypeKind.LONG:
+                return "signed long"
+            case cindex.TypeKind.LONGLONG:
+                return "signed long long"
+            case cindex.TypeKind.INT128:
+                return "signed __int128"
+            case cindex.TypeKind.FLOAT:
+                return "float"
+            case cindex.TypeKind.DOUBLE:
+                return "double"
+            case cindex.TypeKind.LONGDOUBLE:
+                return "long double"
+            case cindex.TypeKind.NULLPTR:
+                return "nullptr_t"
+            case _:
+                assert False
+                print(f"Unhandled built-in type {type.kind} from {type.spelling}")
+                exit()
+    s = builtin_type_to_string(type)
+    if remove_spaces:
+        s = s.replace(" ", "_")
+    return s
+
+def create_identifying_key(node):
+    return f"{node.location.file}_{node.location.line}_{node.location.column}"
+
+def get_type_hash(node):
+    name_hash = hash(create_identifying_key(node))
+    return f"{abs(int(name_hash)):X}"
+
+def get_node_from_type(type):
+    type, _ = depointer_type(type)
+    if is_builtin_type(type):
+        return None
+    if type.kind in (cindex.TypeKind.POINTER, cindex.TypeKind.LVALUEREFERENCE):
+        while type.kind in (cindex.TypeKind.POINTER, cindex.TypeKind.LVALUEREFERENCE, cindex.TypeKind.MEMBERPOINTER):
+            type = type.get_pointee()
+        type_node = type.get_declaration()
+    elif type.kind in (cindex.TypeKind.CONSTANTARRAY, cindex.TypeKind.VECTOR, cindex.TypeKind.INCOMPLETEARRAY, cindex.TypeKind.VARIABLEARRAY):
+        type_node = type.element_type.get_declaration()
+    elif type.kind in (cindex.TypeKind.FUNCTIONPROTO, cindex.TypeKind.FUNCTIONNOPROTO):
+        return None
+    else:
+        type_node = type.get_declaration()
+        if type_node.type.kind is cindex.TypeKind.TYPEDEF:
+            type_node = get_node_from_type(type_node.underlying_typedef_type)
+            #if type_node:
+            #    print(f"get_node_from_type", type.kind, "into", type_node.kind, type_node.type.kind)
+    return type_node
+
+def get_full_qualified_name(node):
+    printing_policy = cindex.PrintingPolicy.create(node)
+    return node.type.get_fully_qualified_name(policy=printing_policy)
+
+def is_type_template(type):
+    return type.get_num_template_arguments() > 0
+
+def get_type_ida_name(type):
+    def fix_type_string(name):
+        if not name:
+            return ""
+
+        while "(anonymous namespace)" in name:
+            name = name.replace("::(anonymous namespace)::", "")
+            name = name.replace("(anonymous namespace)::", "")
+            name = name.replace("::(anonymous namespace)", "")
+
+        if "(unnamed" in name or "(anonymous" in name:
+            name = f"__unnamed_{get_type_hash(type_node)}"
+
+        #print(f"new name: {name}", "type_node:", type_node.spelling, type_node.kind, type_node.type.kind)
+
+        if name.startswith("const "):
+            name = name[len("const "):]
+        if name.startswith("volatile "):
+            name = name[len("volatile "):]
+
+        name = name.replace("<", "__")
+        name = name.replace(">", "__")
+
+        while name[-1] in ("*", "&"):
+            name = name[:-1]
+
+        if name.endswith(" "):
+            name = name[:-1]
+        return name
+
+    def fix_type_ida_name(type_node):
+        def get_template_args(node):
+            num_template_args = node.get_num_template_arguments()
+            #print(f"{node.canonical.spelling} Has {num_template_args} template args")
+            if num_template_args > 0:
+                template_args = []
+                for template_index in range(num_template_args):
+                    template_arg = node.get_template_argument_type(template_index)
+                    template_arg, template_ptr_str = depointer_type(template_arg)
+                    template_str = get_type_ida_name(template_arg.get_canonical())
+                    template_str = template_str.replace(" ", "_")
+                    #print(f"Template arg {template_index} = {template_arg.spelling} {template_arg.kind}, ret str {template_str}")
+
+                    if is_type_template(template_arg):
+                        template_str = get_template_args(get_node_from_type(template_arg))
+                    else:
+                        if not template_str:
+                            template_str = f"{node.get_template_argument_value(template_index)}"
+                        if template_ptr_str:
+                            template_str += "_p"
+                    template_str = template_str.replace("::(anonymous namespace)::", "")
+                    template_str = template_str.replace("(anonymous namespace)::", "")
+                    template_args.append(template_str)
+                return f"{node.spelling}__{"__".join(template_args)}"
+            return node.spelling
+
+        #print()
+        #print(f"first name:", name, "type_node:", type_node.spelling, type_node.kind, type_node.type.kind)
+
+        if type_node.kind in (cindex.CursorKind.STRUCT_DECL, cindex.CursorKind.CLASS_DECL) and type_node.get_num_template_arguments() > 0:
+            name = get_template_args(type_node)
+            #print(f"template args return: {name}")
+        else:
+            name = get_full_qualified_name(type_node)
+        return fix_type_string(name)
+
+    assert check_type(type) == cindex.Type, f""
+
+    #print(f"Going into get_node with", type.spelling, type.kind)
+    type, type_ptr_str = depointer_type(type)
+    type_node = get_node_from_type(type)
+    if not type_node or type_node.type.kind is cindex.TypeKind.INVALID:
+        #print(f"Failed to get a node:", type.spelling, type.kind)
+        if is_builtin_type(type):
+            return f"{builtin_type_to_ida_string(type)}{type_ptr_str}"
+        return fix_type_string(type.spelling)
+
+    #print(f"Got a node:", type_node.spelling, type_node.kind, type_node.type.kind)
+
+    if is_builtin_type(type_node.type):
+        return f"{builtin_type_to_ida_string(type_node.type)}{raw_type_pointer_str}"
+
+    if type_node.location.file is None:
+        return type_node.type.spelling
+
+    return fix_type_ida_name(type_node)
+
+def get_variable_name_ida_name(node, offset):
+    name = node.spelling
+
+    #print(f"full name:", name)
+
+    if not name:
+        name = f"unk_{offset:X}"
+    elif "(unnamed" in name or "(anonymous" in name:
+        name = f"unnamed_{offset:X}"
+
+    #print(f"final name", name)
+    return name
+
 def parse_funcproto(type):
     ret_type = type.get_result()
     args = []
@@ -245,13 +363,10 @@ def parse_funcproto(type):
     return [ret_type, args]
 
 def parse_field_decl(record_node, node, offset):
-    def parse_typedef(type):
-        return get_type_ida_name(type)
-
     def parse_funcproto(node):
         children = list(node.get_children())
         if node.has_children() and children[0].kind == cindex.CursorKind.TYPE_REF:
-            ret_type = get_type_ida_name(children[0])
+            ret_type = get_type_ida_name(children[0].type)
             children = children[1:]
         else:
             ret_type = "void"
@@ -285,24 +400,39 @@ def parse_field_decl(record_node, node, offset):
     record_num_digits = len(f"{record_size:X}")
 
     base_type, pointer_str = depointer_type(node.type)
-    #offset = record_node.type.get_offset(node.spelling) // 8
     extra = ""
 
+    """
+    if node.spelling == "tmp":
+        print_node(record_node)
+        print()
+        print_node(node)
+        print()
+        print(base_type.spelling, base_type.kind)
+        print(get_full_qualified_name(node))
+
+        exit()
+    """
+
     if is_builtin_type(base_type):
-        type = builtin_type_to_string(base_type)
+        type = builtin_type_to_ida_string(base_type)
     else:
+        try_parse_node_from_type(base_type)
+
         match base_type.kind:
             case cindex.TypeKind.FUNCTIONPROTO:
                 type, args = parse_funcproto(node)
                 extra = f"({", ".join(args)});"
 
             case cindex.TypeKind.TYPEDEF:
-                type = parse_typedef(base_type)
+                type = get_type_ida_name(base_type)
 
             case cindex.TypeKind.RECORD:
                 type = get_type_ida_name(base_type)
 
             case cindex.TypeKind.CONSTANTARRAY:
+                try_parse_node_from_type(base_type.element_type)
+
                 type, num_elements = parse_array(base_type)
                 for dim in num_elements:
                     if dim == -1:
@@ -311,6 +441,8 @@ def parse_field_decl(record_node, node, offset):
                         extra += f"[{dim}]"
 
             case cindex.TypeKind.INCOMPLETEARRAY:
+                try_parse_node_from_type(base_type.element_type)
+
                 type, num_elements = parse_array(base_type)
 
                 for dim in num_elements:
@@ -320,35 +452,47 @@ def parse_field_decl(record_node, node, offset):
                         extra += f"[{dim}]"
 
             case cindex.TypeKind.ENUM:
-                type = parse_typedef(base_type)
+                type = get_type_ida_name(base_type)
 
             case cindex.TypeKind.UNEXPOSED:
-                template_decl = base_type.get_declaration()
-                num_template_args = template_decl.get_num_template_arguments()
-                if num_template_args > 0:
-                    template_args = []
-                    for template_index in range(num_template_args):
-                        template_arg = base_type.get_template_argument_type(template_index)
-                        template_arg, template_ptr_str = depointer_type(template_arg)
-                        
-                        template_str = template_arg.spelling
-                        if not template_str:
-                            template_str = f"{template_decl.get_template_argument_value(template_index)}"
-                        if template_ptr_str:
-                            template_str += "_p"
-                        template_args.append(template_str)
-                    type = f"{template_decl.spelling}__{"__".join(template_args)}"
-                else:
-                    print(f"{node.spelling} Unhandled parse_field_decl unexposed child type {children[0].kind}")
-                    exit()
+                type = get_type_ida_name(base_type)
 
+                if is_type_template(base_type):
+                    for template_index in range(base_type.get_num_template_arguments()):
+                        template_arg = base_type.get_template_argument_type(template_index)
+                        try_parse_node_from_type(template_arg)
+                        #print(f"{node.spelling} template {template_index}: {template_arg.spelling}, {template_arg.kind}")
+                else:
+                   #print_node(record_node)
+                   #print(record_node.get_num_template_arguments())
+                   #print()
+
+                    arg_matched = False
+                    num_record_templates = record_node.get_num_template_arguments()
+                    for record_template_index in range(num_record_templates):
+                        record_template_arg = record_node.get_template_argument_type(record_template_index)
+                        template_type, template_pointer_str = depointer_type(record_template_arg)
+                        record_template_arg_str = get_type_ida_name(template_type)
+                        #print(f"{record_node.spelling} {node.spelling} Checking \"{type}\" against \"{record_template_arg_str}\"")
+
+                        if type == record_template_arg_str or are_builtin_types_the_same(type, record_template_arg_str):
+                            arg_matched = True
+                            try_parse_node_from_type(template_type)
+
+                            type = record_template_arg_str
+                            pointer_str = template_pointer_str
+                            #print(f"New template type {type}{pointer_str}")
+                            break
+
+                    if not arg_matched:
+                        print(f"{record_node.spelling}: {node.spelling} {base_type.kind} Failed to match template arg \"{type}\"")
+                        exit()
             case _:
-                print("\n".join(OUTPUT))
                 print(f"{base_type.spelling}: Unhandled parse_field_decl kind {base_type.kind}")
                 exit()
 
     offset_comment = f"/* 0x{offset:0{record_num_digits}X} */"
-    OUTPUT.append(f"{offset_comment} {type}{pointer_str} {get_name_ida_name(node, offset)}{extra};")
+    return f"{offset_comment} {type}{pointer_str} {get_variable_name_ida_name(node, offset)}{extra};"
 
 def parse_record(node):
     def align_up(v, to):
@@ -368,7 +512,10 @@ def parse_record(node):
             print(f"Unhandled record type {node.kind}")
             exit()
 
-    OUTPUT.append(f"{record_type} __cppobj {get_type_ida_name(node)} {{")
+    record_name = get_type_ida_name(node.type)
+
+    to_output = []
+    to_output.append(f"{record_type} __cppobj {record_name} {{")
 
     record_size = node.type.get_size()
     record_num_digits = len(f"{record_size:X}")
@@ -377,39 +524,33 @@ def parse_record(node):
     total_size = 0
     for i,base in enumerate(bases):
         total_size = align_up(total_size, base.type.get_align())
+
+        base_decl = base.type.get_declaration()
+        assert base_decl.kind in (cindex.CursorKind.STRUCT_DECL, cindex.CursorKind.CLASS_DECL, cindex.CursorKind.TYPEDEF_DECL), f"Record base template kind unknown: {base_decl.kind}"
+        #print(base.spelling, base.kind, base.type.kind, "---", base_decl.spelling, base_decl.kind, base_decl.type.kind)
+        parse_node(base_decl)
+
         base_type_name = get_type_ida_name(base.type)
-
-        match base.type.kind:
-            case cindex.TypeKind.UNEXPOSED:
-                template_decl = base.type.get_declaration()
-                num_template_args = template_decl.get_num_template_arguments()
-                if num_template_args > 0:
-                    template_args = []
-                    for template_index in range(num_template_args):
-                        template_arg = template_decl.get_template_argument_type(template_index)
-                        template_arg, template_ptr_str = depointer_type(template_arg)
-
-                        template_str = template_arg.spelling
-                        if not template_str:
-                            template_str = f"{base.type.get_template_argument_value(template_index)}"
-                        if template_ptr_str:
-                            template_str += "_p"
-                        template_args.append(template_str)
-                    base_type_name = f"{template_decl.spelling}__{"__".join(template_args)}"
-
         decl = f"/* 0x{total_size:0{record_num_digits}X} */ {base_type_name} _base{i};"
-        OUTPUT.append(decl)
+        to_output.append(decl)
 
         total_size += base.type.get_size()
 
     fields = []
     for field in node.type.get_fields():
         total_size = align_up(total_size, field.type.get_align())
-
+        """
+        if "reslist" in node.spelling:
+            print()
+            print_node(field)
+            print(field.spelling, field.type.spelling, field.type.kind)
+            base_type, pointer_str = depointer_type(field.type)
+            print(base_type.spelling, base_type.kind)
+        """
         #print(f"\t", field.spelling, field.kind, field.type.kind)
         match field.kind:
             case cindex.CursorKind.FIELD_DECL:
-                parse_field_decl(node, field, total_size)
+                to_output.append(parse_field_decl(node, field, total_size))
 
             case _:
                 print(f"{field.location.file}:{field.location.line}: {field.spelling}: Unhandled parse_record element type {field.kind}")
@@ -417,48 +558,11 @@ def parse_record(node):
 
         total_size += field.type.get_size()
 
-    OUTPUT.append(f"}}; // size = 0x{record_size:0{record_num_digits}X}")
+    #if "reslist" in node.spelling:
+    #    exit()
 
-def parse_type(node, offset):
-    out_type = {}
-
-    out_type["name"] = get_name_ida_name(node, offset)
-    out_type["type"] = get_type_ida_name(node)
-
-    out_type["size"] = node.type.get_size()
-    out_type["offset"] = offset
-
-    out_type["is_pointer"] = node.type.kind is cindex.TypeKind.POINTER
-    out_type["is_reference"] = node.type.kind is cindex.TypeKind.LVALUEREFERENCE
-
-    out_type["is_array"] = node.type.kind is cindex.TypeKind.CONSTANTARRAY
-    if out_type["is_array"]:
-        out_type["num_elements"] = node.type.element_count
-
-    out_type["is_bitfield"] = node.is_bitfield()
-    if out_type["is_bitfield"]:
-        out_type["bitfield_width"] = node.get_bitfield_width()
-
-    return out_type
-
-def parse_type_fields(node):
-    def align_up(v, to):
-        assert bin(to).count("1") == 1, f"alignment must be a power of 2!"
-        return (v + to - 1) & ~(to - 1)
-
-    fields = []
-    total_size = 0
-    for i,field in enumerate(node.type.get_fields()):
-        total_size = align_up(total_size, field.type.get_align())
-
-        field_info = parse_type(field, total_size)
-
-        fields.append(field_info)
-
-        if node.kind is not cindex.CursorKind.UNION_DECL:
-            total_size += field_info["size"]
-
-    return fields
+    to_output.append(f"}}; // size = 0x{record_size:0{record_num_digits}X}")
+    OUTPUT.extend(to_output)
 
 def parse_typedef_decl(node):
     def parse_typedef(type):
@@ -467,7 +571,7 @@ def parse_typedef_decl(node):
     def parse_funcproto(node):
         children = list(node.get_children())
         if node.has_children() and children[0].kind == cindex.CursorKind.TYPE_REF:
-            ret_type = get_type_ida_name(children[0])
+            ret_type = get_type_ida_name(children[0].type)
             children = children[1:]
         else:
             ret_type = "void"
@@ -481,7 +585,7 @@ def parse_typedef_decl(node):
                 # builtin type so clang refuses to emit a node for it...
                 child_node = child
             parm_underlying_type, parm_underlying_pointer_str = depointer_type(child.type)
-            arg_type = f"{get_type_ida_name(child_node)}{parm_underlying_pointer_str}"
+            arg_type = f"{get_type_ida_name(child_node.type)}{parm_underlying_pointer_str}"
             func_args.append(f"{arg_type} {child.spelling}")
         return (ret_type, func_args)
 
@@ -496,43 +600,23 @@ def parse_typedef_decl(node):
 
         return (type.spelling, num_elements)
 
-    key = create_identifying_key(node)
-    if key in TYPES:
-        return
-
-    TYPES[key] = {}
-
     underlying_type, pointer_str = depointer_type(node.underlying_typedef_type)
     extra = ""
 
+    #print_node(node)
     #print(underlying_type.spelling, underlying_type.kind)
 
-    if underlying_type.kind == cindex.TypeKind.UNEXPOSED:
+    if underlying_type.kind is cindex.TypeKind.UNEXPOSED:
         template_decl = underlying_type.get_declaration()
-        num_template_args = template_decl.get_num_template_arguments()
-        if num_template_args > 0:
-            template_args = []
-            for template_index in range(num_template_args):
-                template_arg = underlying_type.get_template_argument_type(template_index)
-                template_arg, template_ptr_str = depointer_type(template_arg)
-
-                template_str = template_arg.spelling
-                if not template_str:
-                    template_str = f"{template_decl.get_template_argument_value(template_index)}"
-                if template_ptr_str:
-                    template_str += "_p"
-                template_args.append(template_str)
-            decl = f"typedef {template_decl.spelling}__{"__".join(template_args)} {get_type_ida_name(node)};"
-            OUTPUT.append(decl)
-        else:
-            print(f"{node.spelling} Unhandled parse_typedef_decl unexposed child type {children[0].kind}")
-            exit()
-        return
+        assert template_decl.kind in (cindex.CursorKind.STRUCT_DECL, cindex.CursorKind.CLASS_DECL), f"Typedef template kind unknown: {template_decl.kind}"
+        parse_node(template_decl)
 
     if is_builtin_type(underlying_type):
-        decl = f"typedef {underlying_type.spelling} {get_type_ida_name(node)};"
+        decl = f"typedef {underlying_type.spelling} {get_type_ida_name(node.type)};"
         OUTPUT.append(decl)
         return
+
+    try_parse_node_from_type(underlying_type)
 
     match underlying_type.kind:
         case cindex.TypeKind.FUNCTIONPROTO:
@@ -546,6 +630,12 @@ def parse_typedef_decl(node):
         case cindex.TypeKind.TYPEDEF:
             #print(node.location.file, node.location.line, underlying_type.spelling)
             type = parse_typedef(underlying_type)
+            """
+            #print(type)
+            if "ALLOC_HANDLE" in node.spelling:
+                print(get_full_qualified_name(node))
+                exit()
+            """
 
         case cindex.TypeKind.CONSTANTARRAY:
             type, element_dims = parse_array(underlying_type)
@@ -568,26 +658,22 @@ def parse_typedef_decl(node):
         case cindex.TypeKind.ENUM:
             type = underlying_type.spelling
 
+        case cindex.TypeKind.UNEXPOSED:
+            type = get_type_ida_name(underlying_type)
+
         case _:
-            print("\n".join(OUTPUT))
             print(f"{node.location.file}:{node.location.line}: Unhandled parse_typedef_decl type {underlying_type.kind}")
             exit()
 
-    if type == get_type_ida_name(node):
-        return
+    name = get_full_qualified_name(node)
 
     if pointer_str:
-        OUTPUT.append(f"typedef {type} ({pointer_str}{get_type_ida_name(node)}){extra};")
+        OUTPUT.append(f"typedef {type} ({pointer_str}{name}){extra};")
     else:
-        OUTPUT.append(f"typedef {type} {get_type_ida_name(node)}{extra};")
+        OUTPUT.append(f"typedef {type} {name}{extra};")
 
 def parse_enum_decl(node):
-    key = create_identifying_key(node)
-    if key in TYPES:
-        return
-    TYPES[key] = {}
-
-    OUTPUT.append(f"enum {get_type_ida_name(node)} {{")
+    OUTPUT.append(f"enum {get_type_ida_name(node.type)} {{")
 
     for child in node.get_children():
         match child.kind:
@@ -600,82 +686,38 @@ def parse_enum_decl(node):
 
     OUTPUT.append(f"}};")
 
-def parse_enum(node):
-    key = create_identifying_key(node)
-    if key in TYPES:
-        return
-
-    TYPES[key] = {}
-    TYPES[key]["name"] = get_type_ida_name(node)
-    TYPES[key]["kind"] = "enum"
-    TYPES[key]["size"] = node.type.get_size()
-    TYPES[key]["alignment"] = node.type.get_align()
-    TYPES[key]["real_type"] = node.enum_type.spelling
-
-    TYPES[key]["fields"] = []
-    for child in node.get_children():
-        enum_name = child.spelling
-        enum_value = child.enum_value
-        TYPES[key]["fields"].append({"name":enum_name, "value":enum_value})
-
 def parse_union_decl(node):
-    key = create_identifying_key(node)
-    if key in TYPES:
-        return
-    TYPES[key] = {}
-
     for union_node in node.get_children():
         parse_node(union_node)
 
     parse_record(node)
-
-def parse_union(node):
-    key = create_identifying_key(node)
-    if key in TYPES:
-        return
-
-    for union_node in node.get_children():
-        parse_node(union_node)
-
-    TYPES[key] = {}
-    TYPES[key]["name"] = get_type_ida_name(node)
-    TYPES[key]["kind"] = "union"
-    TYPES[key]["size"] = node.type.get_size()
-    TYPES[key]["alignment"] = node.type.get_align()
-    TYPES[key]["fields"] = parse_type_fields(node)
 
 def parse_struct_decl(node):
-    key = create_identifying_key(node)
-    if key in TYPES:
-        return
-    TYPES[key] = {}
-
     for struct_node in node.get_children():
         parse_node(struct_node)
-
-    is_class = node.kind is cindex.CursorKind.CLASS_DECL
 
     parse_record(node)
 
-def parse_struct(node, is_class):
-    key = create_identifying_key(node)
-    if key in TYPES:
-        return
-
-    for struct_node in node.get_children():
-        parse_node(struct_node)
-
-    TYPES[key] = {}
-    TYPES[key]["name"] = get_type_ida_name(node)
-    TYPES[key]["kind"] = "struct"
-    TYPES[key]["size"] = node.type.get_size()
-    TYPES[key]["alignment"] = node.type.get_align()
-    TYPES[key]["fields"] = parse_type_fields(node)
+CURRENT_NAMESPACES = []
 
 def parse_node(node):
     if node.location.file is None:
         return
 
+    #print(node.spelling, node.kind, node.type.kind)
+    if node.kind not in (cindex.CursorKind.TYPEDEF_DECL, cindex.CursorKind.ENUM_DECL, 
+                         cindex.CursorKind.UNION_DECL, cindex.CursorKind.STRUCT_DECL, 
+                         cindex.CursorKind.CLASS_DECL, cindex.CursorKind.NAMESPACE):
+        return
+
+    if node.kind is not cindex.CursorKind.NAMESPACE:
+        name = get_type_ida_name(node.type)
+        #print(f"{name} --", node.spelling, node.kind, node.type.spelling, node.type.kind)
+        if name in TYPES_OUTPUT:
+            #print(f"OLD {name} --", node.location.file, node.location.line, node.spelling, node.kind, node.type.spelling, node.type.kind)
+            return
+        #print(f"NEW {name} --", node.location.file, node.location.line, node.spelling, node.kind, node.type.spelling, node.type.kind)
+        TYPES_OUTPUT.add(name)
     #print_node(node)
 
     if node.kind == cindex.CursorKind.TYPEDEF_DECL:
@@ -690,12 +732,23 @@ def parse_node(node):
     elif node.kind == cindex.CursorKind.STRUCT_DECL or node.kind == cindex.CursorKind.CLASS_DECL:
         parse_struct_decl(node)
 
-    elif node.kind is cindex.CursorKind.CLASS_TEMPLATE:
-        pass
-
     elif node.kind is cindex.CursorKind.NAMESPACE:
+        CURRENT_NAMESPACES.append(node.spelling)
+        #print()
+        #print(f"RECURSING into {"::".join(CURRENT_NAMESPACES)}")
         for ns in node.get_children():
             parse_node(ns)
+
+        #print(f"RECURSING out of {"::".join(CURRENT_NAMESPACES)}")
+        #print()
+        CURRENT_NAMESPACES.pop(-1)
+
+def try_parse_node_from_type(type):
+    type_node = get_node_from_type(type)
+    if not type_node:
+        return
+
+    parse_node(type_node)
 
 def parse_files(files, index):
     def parse_file(file):
@@ -716,6 +769,7 @@ def parse_files(files, index):
             case _:
                 print(f"Unknown compile lang {compile_lang}")
                 exit()
+
         args.append(compile_lang)
         args.append("-nostdlibinc")
         args.append("-nostdinc")
@@ -727,29 +781,6 @@ def parse_files(files, index):
         options = cindex.TranslationUnit.PARSE_SKIP_FUNCTION_BODIES
 
         unit = index.parse(file_path, args=args, options=options)
-
-        """
-        has_def = False
-        if "dvderr" in str(file_path):
-            has_def = True
-        else:
-            for node in unit.cursor.get_children():
-                if "DVDErrorInfo" in node.spelling:
-                    has_def = True
-                    break;
-
-        if has_def:
-            print(node.location.file)
-            for node in unit.cursor.get_children():
-                print(f"{node.location.line}{node.location.column}:", node.spelling, node.kind, node.type.kind)
-                for n in node.get_children():
-                    print("\t", n.spelling, n.kind, n.type.kind)
-                    for v in n.get_children():
-                        print("\t\t", v.spelling, v.kind, v.type.kind)
-
-
-            exit()
-        """
 
         #print(file_path, args)
 
@@ -802,165 +833,7 @@ index = cindex.Index.create()
 parse_files(files, index)
 
 #print(TYPES)
+#print(OUTPUT)
 
-print(f"Generating types...")
-
-BUILTIN_TYPES = {
-    "char",
-    "signed char",
-    "unsigned char",
-    "short",
-    "signed short",
-    "unsigned short",
-    "int",
-    "signed int",
-    "unsigned int",
-    "long",
-    "signed long",
-    "unsigned long",
-    "long long",
-    "signed long long",
-    "unsigned long long",
-    "float",
-    "double",
-    "void",
-    "nullptr",
-    "bool",
-}
-
-def needs_output(name):
-    return not (name in BUILTIN_TYPES or name in TYPES_OUTPUT)
-
-def split_type_array(t):
-    arr = ""
-    if "[" in t:
-        t, arr = t.split("[",1)
-        arr = "[" + arr
-    return t, arr
-
-def get_c_prefix(t):
-    prefix = ""
-    if t in TYPES:
-        if TYPES[t]["kind"] == "struct" or TYPES[t]["kind"] == "class":
-            prefix = "struct "
-    return prefix
-
-def get_field_definition(field):
-    field_name = field["name"]
-    field_type = field["type"]
-
-    arr = ""
-    bf = ""
-    ptr = ""
-    #if field["is_pointer"]:
-    #    ptr = "*"
-    #elif field["is_reference"]:
-    #    ptr = "&"
-    if field["is_array"]:
-        field_type, arr = split_type_array(field_type)
-    elif field["is_bitfield"]:
-        bf = f" : {field["bitfield_width"]}"
-    elif "(" in field_type and field_type[-1] == ")":
-        #print(f"Fixing {field_name} -- {field_type}")
-        field_name = fix_func_decl(field_type, field_name)
-        field_type = ""
-
-    return f"{field_type}{ptr} {field_name}{bf}{arr}"
-
-def output_union(k):
-    entry = TYPES[k]
-    name = entry["name"]
-
-    OUTPUT.append(f"union {name} {{")
-
-    size_hex = f"{entry["size"]:X}"
-    num_hex_digits = len(size_hex)
-
-    for field in entry["fields"]:
-        decl = get_field_definition(field)
-        OUTPUT.append(f"{decl};")
-
-    OUTPUT.append(f"}}; // size = 0x{entry["size"]:0{num_hex_digits}X}")
-
-def output_struct(k):
-    entry = TYPES[k]
-    name = entry["name"]
-
-    OUTPUT.append(f"struct {name} {{")
-
-    size_hex = f"{entry["size"]:X}"
-    num_hex_digits = len(size_hex)
-
-    for field in entry["fields"]:
-        decl = get_field_definition(field)
-        OUTPUT.append(f"/* 0x{field["offset"]:0{num_hex_digits}X} */ {decl};")
-
-    OUTPUT.append(f"}}; // size = 0x{entry["size"]:0{num_hex_digits}X}")
-
-def output_type(k):
-    global TYPES_OUTPUT
-    entry = TYPES[k]
-    name = entry["name"]
-
-    #print(k, "--", entry["name"])
-
-    if not needs_output(name):
-        return
-    TYPES_OUTPUT.add(name)
-
-    ret = ""
-
-    match entry["kind"]:
-        case "typedef":
-            t, arr = split_type_array(entry["real_type"])
-            c_prefix = get_c_prefix(t)
-
-            OUTPUT.append(f"typedef {c_prefix}{t} {name}{arr};")
-
-        case "typedef_func":
-            func_def = fix_func_decl(entry["real_type"], name)
-            OUTPUT.append(f"typedef {func_def};")
-
-        case "typedef_enum":
-            OUTPUT.append(f"typedef {entry["real_type"]} {name};")
-
-        case "typedef_union":
-            t, arr = split_type_array(entry["real_type"])
-            c_prefix = get_c_prefix(t)
-            OUTPUT.append(f"typedef {c_prefix}{t} {name}{arr};")
-
-        case "typedef_struct":
-            t, arr = split_type_array(entry["real_type"])
-            c_prefix = get_c_prefix(t)
-            OUTPUT.append(f"typedef {c_prefix}{t} {name}{arr};")
-
-        case "typedef_class":
-            t, arr = split_type_array(entry["real_type"])
-            c_prefix = get_c_prefix(t)
-            OUTPUT.append(f"typedef {c_prefix}{t} {name}{arr};")
-
-        case "enum":
-            OUTPUT.append(f"enum {name} {{")
-
-            for enum_entry in entry["fields"]:
-                OUTPUT.append(f"{enum_entry["name"]} = {enum_entry["value"]},")
-
-            OUTPUT.append("};")
-
-        case "union":
-            output_union(k)
-
-        case "struct":
-            output_struct(k)
-
-        case _:
-            print(f"Unhandled typedef type {entry["kind"]}")
-            exit()
-"""
-for k in TYPES.keys():
-    #print(f"{k} -- {TYPES[k]}")
-    output_type(k)
-"""
-#print("\n".join(OUTPUT))
 out_path = Path(__file__).parent /  "structs.h"
 out_path.write_text("\n".join(OUTPUT))
