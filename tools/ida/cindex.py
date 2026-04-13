@@ -2870,6 +2870,10 @@ class Type(Structure):
         """Determine whether this Type represents plain old data (POD)."""
         return bool(conf.lib.clang_isPODType(self))
 
+    def is_pointer(self) -> bool:
+        return self.kind in (TypeKind.NULLPTR, TypeKind.POINTER, TypeKind.BLOCKPOINTER, 
+                             TypeKind.LVALUEREFERENCE,TypeKind.RVALUEREFERENCE, TypeKind.MEMBERPOINTER)
+
     def get_pointee(self) -> Type:
         """
         For pointer types, returns the type of the pointee.

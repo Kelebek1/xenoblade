@@ -92,8 +92,11 @@ files = get_ninja_sources()
 cindex.conf.set_library_path(clang_path)
 
 TYPES = {}
-TYPES_OUTPUT = set()
+TYPES_OUTPUT = {}
+TYPES_FINISHED = set()
 OUTPUT = []
+PRINT_POLICY = None
+PRINT_INDENT = 0
 
 def print_node(node):
     def print_all_children(node, indent):
@@ -227,7 +230,7 @@ def get_type_hash(node):
     name_hash = hash(create_identifying_key(node))
     return f"{abs(int(name_hash)):X}"
 
-def get_node_from_type(type):
+def get_node_from_type(type, is_typedef_name=False):
     type, _ = depointer_type(type)
     if is_builtin_type(type):
         return None
@@ -241,20 +244,28 @@ def get_node_from_type(type):
         return None
     else:
         type_node = type.get_declaration()
-        if type_node.type.kind is cindex.TypeKind.TYPEDEF:
+        if not is_typedef_name and type_node.type.kind is cindex.TypeKind.TYPEDEF:
+            #print(f"get_node_from_type trying to get underlying decl from", type.spelling, type.kind)
             type_node = get_node_from_type(type_node.underlying_typedef_type)
-            #if type_node:
-            #    print(f"get_node_from_type", type.kind, "into", type_node.kind, type_node.type.kind)
+            """
+            if type_node:
+                print(f"get_node_from_type success", type.kind, "into", type_node.kind, type_node.type.kind)
+            else:
+                print(f"get_node_from_type failed", type.spelling, type.kind)
+            """
+
     return type_node
 
 def get_full_qualified_name(node):
-    printing_policy = cindex.PrintingPolicy.create(node)
-    return node.type.get_fully_qualified_name(policy=printing_policy)
+    if check_type(node) is cindex.Cursor:
+        printing_policy = cindex.PrintingPolicy.create(node)
+        return node.type.get_fully_qualified_name(policy=printing_policy)
+    return node.get_fully_qualified_name(policy=PRINT_POLICY)
 
 def is_type_template(type):
     return type.get_num_template_arguments() > 0
 
-def get_type_ida_name(type):
+def get_type_ida_name(type, is_typedef_name=False):
     def fix_type_string(name):
         if not name:
             return ""
@@ -276,12 +287,16 @@ def get_type_ida_name(type):
 
         name = name.replace("<", "__")
         name = name.replace(">", "__")
+        name = name.replace(", ", "__")
+
+        if name.endswith("__"):
+            name = name[:-2]
 
         while name[-1] in ("*", "&"):
             name = name[:-1]
 
-        if name.endswith(" "):
-            name = name[:-1]
+        name = name.rstrip()
+
         return name
 
     def fix_type_ida_name(type_node):
@@ -311,35 +326,34 @@ def get_type_ida_name(type):
             return node.spelling
 
         #print()
-        #print(f"first name:", name, "type_node:", type_node.spelling, type_node.kind, type_node.type.kind)
 
         if type_node.kind in (cindex.CursorKind.STRUCT_DECL, cindex.CursorKind.CLASS_DECL) and type_node.get_num_template_arguments() > 0:
             name = get_template_args(type_node)
             #print(f"template args return: {name}")
         else:
             name = get_full_qualified_name(type_node)
+
+        #print(f"first name:", name, "type_node:", type_node.spelling, type_node.kind, type_node.type.kind)
+
         return fix_type_string(name)
 
-    assert check_type(type) == cindex.Type, f""
+    assert check_type(type) == cindex.Type, f"Msut pass a cindex.Type object"
 
-    #print(f"Going into get_node with", type.spelling, type.kind)
     type, type_ptr_str = depointer_type(type)
-    type_node = get_node_from_type(type)
+    #print(f"Going into get_node with", type.spelling, type.kind)
+    type_node = get_node_from_type(type, is_typedef_name)
     if not type_node or type_node.type.kind is cindex.TypeKind.INVALID:
         #print(f"Failed to get a node:", type.spelling, type.kind)
         if is_builtin_type(type):
             return f"{builtin_type_to_ida_string(type)}{type_ptr_str}"
-        return fix_type_string(type.spelling)
+        return f"{fix_type_string(get_full_qualified_name(type))}{type_ptr_str}"
 
     #print(f"Got a node:", type_node.spelling, type_node.kind, type_node.type.kind)
 
-    if is_builtin_type(type_node.type):
-        return f"{builtin_type_to_ida_string(type_node.type)}{raw_type_pointer_str}"
-
     if type_node.location.file is None:
-        return type_node.type.spelling
+        return f"{type_node.type.spelling}{type_ptr_str}"
 
-    return fix_type_ida_name(type_node)
+    return f"{fix_type_ida_name(type_node)}{type_ptr_str}"
 
 def get_variable_name_ida_name(node, offset):
     name = node.spelling
@@ -354,18 +368,61 @@ def get_variable_name_ida_name(node, offset):
     #print(f"final name", name)
     return name
 
-def parse_funcproto(type):
-    ret_type = type.get_result()
-    args = []
-    for arg in type.argument_types():
-        arg_type, arg_pointer_str = depointer_type(arg)
-        args.append(f"{arg_type.spelling}{arg_pointer_str}")
-    return [ret_type, args]
+def try_output_forward_decl(node):
+    if not node:
+        return False
+
+    if node.kind is cindex.CursorKind.TYPEDEF_DECL:
+        name = get_full_qualified_name(node)
+    else:
+        name = get_type_ida_name(node.type)
+    types_name = f"{name}{node.kind}"
+
+    if not types_name in TYPES_OUTPUT:
+        TYPES_OUTPUT[types_name] = {"status":0, "has_declaration":False}
+
+    if not TYPES_OUTPUT[types_name]["has_declaration"]:
+        match node.kind:
+            case cindex.CursorKind.STRUCT_DECL:
+                OUTPUT.append(f"struct {name};")
+            case cindex.CursorKind.CLASS_DECL:
+                OUTPUT.append(f"class {name};")
+            case cindex.CursorKind.TYPEDEF_DECL:
+                underlying_node = get_node_from_type(node.underlying_typedef_type)
+                if underlying_node:
+                    underlying_node = underlying_node.get_definition()
+                    if underlying_node:
+                        underlying_name = get_type_ida_name(underlying_node.type)
+                        underlying_types_name = f"{underlying_name}{underlying_node.kind}"
+
+                        if not underlying_types_name in TYPES_OUTPUT:
+                            TYPES_OUTPUT[underlying_types_name] = {"status":0, "has_declaration":False}
+
+                        if not TYPES_OUTPUT[underlying_types_name]["has_declaration"]:
+                            match underlying_node.kind:
+                                case cindex.CursorKind.STRUCT_DECL:
+                                    OUTPUT.append(f"struct {underlying_name};")
+                                case cindex.CursorKind.CLASS_DECL:
+                                    OUTPUT.append(f"class {underlying_name};")
+                                case _:
+                                    print(f"{"    "*PRINT_INDENT}Unknown half typedef {underlying_name}, it's a", node.spelling, node.kind, node.type.kind)
+                            TYPES_OUTPUT[underlying_types_name]["has_declaration"] = True
+
+            case _:
+                print(f"{"    "*PRINT_INDENT}Unknown half type {name}, it's a", node.spelling, node.kind, node.type.kind)
+        TYPES_OUTPUT[types_name]["has_declaration"] = True
+        return True
+    return False
 
 def parse_field_decl(record_node, node, offset):
+    global PRINT_INDENT
     def parse_funcproto(node):
         children = list(node.get_children())
         if node.has_children() and children[0].kind == cindex.CursorKind.TYPE_REF:
+            PRINT_INDENT += 1
+            parse_node(children[0])
+            PRINT_INDENT -= 1
+
             ret_type = get_type_ida_name(children[0].type)
             children = children[1:]
         else:
@@ -373,15 +430,19 @@ def parse_field_decl(record_node, node, offset):
 
         func_args = []
         for child in children:
-            assert child.kind == cindex.CursorKind.PARM_DECL, f"{node.spelling} typedef func argument {child.spelling} is not a PARM_DECL? It's a {child.kind}"
+            assert child.kind == cindex.CursorKind.PARM_DECL, f"{node.spelling} parse_field_decl parse_funcproto argument {child.spelling} is not a PARM_DECL? It's a {child.kind}"
             if child.has_children():
-                arg_type = next(child.get_children()).type.spelling
+                child_node = next(child.get_children())
             else:
                 # builtin type so clang refuses to emit a node for it...
-                parm_underlying_type, parm_underlying_pointer_str = depointer_type(child.type)
-                arg_type = f"{get_type_ida_name(parm_underlying_type)}{parm_underlying_pointer_str}"
-            func_args.append(f"{arg_type} {child.spelling}")
+                child_node = child
+            _, child_pointer_str = depointer_type(child.type)
+            child_type, _ = depointer_type(child_node.type)
 
+            try_parse_node_from_type(child_type)
+
+            arg_type = f"{get_type_ida_name(child_type)}{child_pointer_str}"
+            func_args.append(f"{arg_type} {child.spelling}")
         return (ret_type, func_args)
 
     def parse_array(type):
@@ -403,29 +464,46 @@ def parse_field_decl(record_node, node, offset):
     extra = ""
 
     """
-    if node.spelling == "tmp":
+    if node.spelling == "mHandle":
         print_node(record_node)
         print()
         print_node(node)
         print()
         print(base_type.spelling, base_type.kind)
         print(get_full_qualified_name(node))
-
         exit()
     """
 
     if is_builtin_type(base_type):
         type = builtin_type_to_ida_string(base_type)
     else:
-        try_parse_node_from_type(base_type)
+        if node.type.is_pointer():
+            if not get_type_ida_name(base_type) == get_type_ida_name(record_node.type):
+                try_output_forward_decl(base_type.get_declaration())
+        else:
+            PRINT_INDENT += 1
+            parse_node(base_type.get_declaration().get_definition())
+            PRINT_INDENT -= 1
 
         match base_type.kind:
             case cindex.TypeKind.FUNCTIONPROTO:
                 type, args = parse_funcproto(node)
-                extra = f"({", ".join(args)});"
+                extra = f"({", ".join(args)})"
 
             case cindex.TypeKind.TYPEDEF:
                 type = get_type_ida_name(base_type)
+                """
+                if node.spelling == "mHandle":
+                    print_node(record_node)
+                    print()
+                    print_node(node)
+                    print()
+                    print(base_type.spelling, base_type.kind)
+                    print(get_full_qualified_name(node))
+
+                    print(f"End type:", type)
+                    exit()
+                """
 
             case cindex.TypeKind.RECORD:
                 type = get_type_ida_name(base_type)
@@ -460,8 +538,9 @@ def parse_field_decl(record_node, node, offset):
                 if is_type_template(base_type):
                     for template_index in range(base_type.get_num_template_arguments()):
                         template_arg = base_type.get_template_argument_type(template_index)
-                        try_parse_node_from_type(template_arg)
-                        #print(f"{node.spelling} template {template_index}: {template_arg.spelling}, {template_arg.kind}")
+                        template_type, template_pointer_str = depointer_type(template_arg)
+                        try_parse_node_from_type(template_type)
+                        #print(f"{node.spelling} template {template_index}: {template_type.spelling}, {template_type.kind}")
                 else:
                    #print_node(record_node)
                    #print(record_node.get_num_template_arguments())
@@ -487,14 +566,26 @@ def parse_field_decl(record_node, node, offset):
                     if not arg_matched:
                         print(f"{record_node.spelling}: {node.spelling} {base_type.kind} Failed to match template arg \"{type}\"")
                         exit()
+                """
+                if "reslist" in base_type.spelling:
+                    #print_node(record_node)
+                    #print()
+                    print_node(node)
+                    exit()
+                """
             case _:
                 print(f"{base_type.spelling}: Unhandled parse_field_decl kind {base_type.kind}")
                 exit()
 
     offset_comment = f"/* 0x{offset:0{record_num_digits}X} */"
+
+    if base_type.kind is cindex.TypeKind.FUNCTIONPROTO:
+        return f"{offset_comment} {type} ({pointer_str}{get_variable_name_ida_name(node, offset)}){extra};"
+
     return f"{offset_comment} {type}{pointer_str} {get_variable_name_ida_name(node, offset)}{extra};"
 
 def parse_record(node):
+    global PRINT_INDENT
     def align_up(v, to):
         assert bin(to).count("1") == 1, f"alignment must be a power of 2!"
         return (v + to - 1) & ~(to - 1)
@@ -528,7 +619,9 @@ def parse_record(node):
         base_decl = base.type.get_declaration()
         assert base_decl.kind in (cindex.CursorKind.STRUCT_DECL, cindex.CursorKind.CLASS_DECL, cindex.CursorKind.TYPEDEF_DECL), f"Record base template kind unknown: {base_decl.kind}"
         #print(base.spelling, base.kind, base.type.kind, "---", base_decl.spelling, base_decl.kind, base_decl.type.kind)
+        PRINT_INDENT += 1
         parse_node(base_decl)
+        PRINT_INDENT -= 1
 
         base_type_name = get_type_ida_name(base.type)
         decl = f"/* 0x{total_size:0{record_num_digits}X} */ {base_type_name} _base{i};"
@@ -540,7 +633,7 @@ def parse_record(node):
     for field in node.type.get_fields():
         total_size = align_up(total_size, field.type.get_align())
         """
-        if "reslist" in node.spelling:
+        if "ConsoleHead" in node.spelling:
             print()
             print_node(field)
             print(field.spelling, field.type.spelling, field.type.kind)
@@ -557,20 +650,25 @@ def parse_record(node):
                 exit()
 
         total_size += field.type.get_size()
-
-    #if "reslist" in node.spelling:
-    #    exit()
-
+    """
+    if "CEventFile" in node.spelling:
+        f = list(node.type.get_fields())
+        print(f[1].spelling, f[1].kind, f[1].type.kind, f[1].type.get_pointee().spelling, f[1].type.get_pointee().kind)
+        exit()
+    """
     to_output.append(f"}}; // size = 0x{record_size:0{record_num_digits}X}")
     OUTPUT.extend(to_output)
 
 def parse_typedef_decl(node):
-    def parse_typedef(type):
-        return get_type_ida_name(type)
-
+    global PRINT_INDENT
     def parse_funcproto(node):
+        global PRINT_INDENT
         children = list(node.get_children())
         if node.has_children() and children[0].kind == cindex.CursorKind.TYPE_REF:
+            PRINT_INDENT += 1
+            parse_node(children[0])
+            PRINT_INDENT -= 1
+
             ret_type = get_type_ida_name(children[0].type)
             children = children[1:]
         else:
@@ -584,9 +682,17 @@ def parse_typedef_decl(node):
             else:
                 # builtin type so clang refuses to emit a node for it...
                 child_node = child
-            parm_underlying_type, parm_underlying_pointer_str = depointer_type(child.type)
-            arg_type = f"{get_type_ida_name(child_node.type)}{parm_underlying_pointer_str}"
+            child_type2, child_pointer_str = depointer_type(child.type)
+            child_type, _ = depointer_type(child_node.type)
+
+            print(f"Trying to parse funcproto type {child_type2.spelling}")
+            try_parse_node_from_type(child_type2)
+
+            arg_type = f"{get_type_ida_name(child_type)}{child_pointer_str}"
             func_args.append(f"{arg_type} {child.spelling}")
+
+        if len(children) == 0:
+            func_args.append("void")
         return (ret_type, func_args)
 
     def parse_array(type):
@@ -598,7 +704,9 @@ def parse_typedef_decl(node):
                 num_elements.append(type.element_count)
             type = type.element_type
 
-        return (type.spelling, num_elements)
+        try_parse_node_from_type(type)
+
+        return (get_type_ida_name(type), num_elements)
 
     underlying_type, pointer_str = depointer_type(node.underlying_typedef_type)
     extra = ""
@@ -609,33 +717,40 @@ def parse_typedef_decl(node):
     if underlying_type.kind is cindex.TypeKind.UNEXPOSED:
         template_decl = underlying_type.get_declaration()
         assert template_decl.kind in (cindex.CursorKind.STRUCT_DECL, cindex.CursorKind.CLASS_DECL), f"Typedef template kind unknown: {template_decl.kind}"
+        PRINT_INDENT += 1
         parse_node(template_decl)
+        PRINT_INDENT -= 1
 
     if is_builtin_type(underlying_type):
-        decl = f"typedef {underlying_type.spelling} {get_type_ida_name(node.type)};"
-        OUTPUT.append(decl)
+        name = get_type_ida_name(node.type)
+        if name not in BUILTINS:
+            OUTPUT.append(f"typedef {underlying_type.spelling}{pointer_str} {name};")
         return
 
-    try_parse_node_from_type(underlying_type)
+    if node.underlying_typedef_type.is_pointer():
+        try_output_forward_decl(underlying_type.get_declaration().get_definition())
+    else:
+        PRINT_INDENT += 1
+        try_parse_node_from_type(underlying_type)
+        PRINT_INDENT -= 1
+
+    force_print_parens = False
 
     match underlying_type.kind:
         case cindex.TypeKind.FUNCTIONPROTO:
             type, func_args = parse_funcproto(node)
             extra = f"({", ".join(func_args)})"
+            force_print_parens = True
 
         case cindex.TypeKind.FUNCTIONNOPROTO:
             type, func_args = parse_funcproto(node)
             extra = f"({", ".join(func_args)})"
+            force_print_parens = True
 
         case cindex.TypeKind.TYPEDEF:
             #print(node.location.file, node.location.line, underlying_type.spelling)
-            type = parse_typedef(underlying_type)
-            """
+            type = get_type_ida_name(underlying_type)
             #print(type)
-            if "ALLOC_HANDLE" in node.spelling:
-                print(get_full_qualified_name(node))
-                exit()
-            """
 
         case cindex.TypeKind.CONSTANTARRAY:
             type, element_dims = parse_array(underlying_type)
@@ -653,7 +768,7 @@ def parse_typedef_decl(node):
                     extra += f"[{dim}]"
 
         case cindex.TypeKind.RECORD:
-            type = parse_typedef(underlying_type)
+            type = get_type_ida_name(underlying_type)
 
         case cindex.TypeKind.ENUM:
             type = underlying_type.spelling
@@ -661,13 +776,28 @@ def parse_typedef_decl(node):
         case cindex.TypeKind.UNEXPOSED:
             type = get_type_ida_name(underlying_type)
 
+            types_name = f"{get_type_ida_name(node.type, True)}{node.kind}"
+            if types_name not in TYPES_OUTPUT or not TYPES_OUTPUT[types_name]["has_declaration"]:
+                if types_name not in TYPES_OUTPUT:
+                    TYPES_OUTPUT[types_name] = {"status":0, "has_declaration":False}
+                OUTPUT.append(f"class {get_type_ida_name(underlying_type)};")
+                TYPES_OUTPUT[types_name]["has_declaration"] = True
+
         case _:
             print(f"{node.location.file}:{node.location.line}: Unhandled parse_typedef_decl type {underlying_type.kind}")
             exit()
 
-    name = get_full_qualified_name(node)
+    name = get_type_ida_name(node.type, True)
+    """
+    if "VisitStringCallback" in name:
+        print_node(node)
+        print(name)
+    """
 
-    if pointer_str:
+    if type == name or name in BUILTINS:
+        return
+
+    if pointer_str or force_print_parens:
         OUTPUT.append(f"typedef {type} ({pointer_str}{name}){extra};")
     else:
         OUTPUT.append(f"typedef {type} {name}{extra};")
@@ -687,38 +817,84 @@ def parse_enum_decl(node):
     OUTPUT.append(f"}};")
 
 def parse_union_decl(node):
+    global PRINT_INDENT
     for union_node in node.get_children():
+        PRINT_INDENT += 1
         parse_node(union_node)
+        PRINT_INDENT -= 1
 
     parse_record(node)
 
 def parse_struct_decl(node):
+    global PRINT_INDENT
     for struct_node in node.get_children():
+        PRINT_INDENT += 1
         parse_node(struct_node)
+        PRINT_INDENT -= 1
 
     parse_record(node)
 
 CURRENT_NAMESPACES = []
 
 def parse_node(node):
-    if node.location.file is None:
+    if not node:
         return
 
-    #print(node.spelling, node.kind, node.type.kind)
+    if node.location.file is None:
+        #print(f"NO LOCATION: {node.spelling} {node.kind} {node.type.kind}")
+        return
+
     if node.kind not in (cindex.CursorKind.TYPEDEF_DECL, cindex.CursorKind.ENUM_DECL, 
                          cindex.CursorKind.UNION_DECL, cindex.CursorKind.STRUCT_DECL, 
                          cindex.CursorKind.CLASS_DECL, cindex.CursorKind.NAMESPACE):
+        #print(f"BAD NODE KIND: {node.spelling} {node.kind} {node.type.kind}")
         return
 
-    if node.kind is not cindex.CursorKind.NAMESPACE:
+    if not node.is_definition():
+        #print(f"NOT A DEFINITION: {node.spelling} {node.kind} {node.type.kind}")
+        return
+
+    global PRINT_INDENT
+
+    if node.kind is cindex.CursorKind.TYPEDEF_DECL:
+        name = get_full_qualified_name(node)
+    else:
         name = get_type_ida_name(node.type)
-        #print(f"{name} --", node.spelling, node.kind, node.type.spelling, node.type.kind)
-        if name in TYPES_OUTPUT:
-            #print(f"OLD {name} --", node.location.file, node.location.line, node.spelling, node.kind, node.type.spelling, node.type.kind)
-            return
-        #print(f"NEW {name} --", node.location.file, node.location.line, node.spelling, node.kind, node.type.spelling, node.type.kind)
-        TYPES_OUTPUT.add(name)
+    types_name = f"{name}{node.kind}"
+
+    if node.kind is cindex.CursorKind.NAMESPACE:
+        CURRENT_NAMESPACES.append(node.spelling)
+        #print()
+        #print(f"RECURSING into {"::".join(CURRENT_NAMESPACES)}")
+        for ns in node.get_children():
+            PRINT_INDENT += 1
+            parse_node(ns)
+            PRINT_INDENT -= 1
+
+        #print(f"RECURSING out of {"::".join(CURRENT_NAMESPACES)}")
+        #print()
+        CURRENT_NAMESPACES.pop(-1)
+        return
+
+    if types_name not in TYPES_OUTPUT:
+        TYPES_OUTPUT[types_name] = {"status":0, "has_declaration":False}
+
+    print(f"parse_node", f"{types_name}, status {TYPES_OUTPUT[types_name]["status"]} has_decl {TYPES_OUTPUT[types_name]["has_declaration"]} --", node.spelling, node.kind, node.type.kind)
+
+    # not node.is_definition() or 
+    if TYPES_OUTPUT[types_name]["status"] == 1:
+        try_output_forward_decl(node)
+        return
+
     #print_node(node)
+
+    if TYPES_OUTPUT[types_name]["status"] > 0:
+        print(f"{"    "*PRINT_INDENT}OLD {name} --", node.location.file, node.location.line, node.spelling, node.kind, node.type.spelling, node.type.kind)
+        return
+
+    print(f"{"    "*PRINT_INDENT}NEW {name} --", node.location.file, node.location.line, node.spelling, node.kind, node.type.spelling, node.type.kind)
+    
+    TYPES_OUTPUT[types_name]["status"] = 1
 
     if node.kind == cindex.CursorKind.TYPEDEF_DECL:
         parse_typedef_decl(node)
@@ -729,7 +905,7 @@ def parse_node(node):
     elif node.kind == cindex.CursorKind.UNION_DECL:
         parse_union_decl(node)
 
-    elif node.kind == cindex.CursorKind.STRUCT_DECL or node.kind == cindex.CursorKind.CLASS_DECL:
+    elif node.kind in (cindex.CursorKind.STRUCT_DECL, cindex.CursorKind.CLASS_DECL):
         parse_struct_decl(node)
 
     elif node.kind is cindex.CursorKind.NAMESPACE:
@@ -737,18 +913,29 @@ def parse_node(node):
         #print()
         #print(f"RECURSING into {"::".join(CURRENT_NAMESPACES)}")
         for ns in node.get_children():
+            PRINT_INDENT += 1
             parse_node(ns)
+            PRINT_INDENT -= 1
 
         #print(f"RECURSING out of {"::".join(CURRENT_NAMESPACES)}")
         #print()
         CURRENT_NAMESPACES.pop(-1)
 
+    TYPES_FINISHED.add(types_name)
+    TYPES_OUTPUT[types_name]["status"] = 2
+    TYPES_OUTPUT[types_name]["has_declaration"] = True
+
 def try_parse_node_from_type(type):
     type_node = get_node_from_type(type)
     if not type_node:
+        print(f"try_parse_node_from_type failed {type.spelling} {type.kind}")
         return
 
-    parse_node(type_node)
+    print(f"try_parse_node_from_type success {type.spelling} into {type_node.spelling} {type_node.kind} {type_node.type.kind}")
+    global PRINT_INDENT
+    PRINT_INDENT += 1
+    parse_node(type_node.get_definition())
+    PRINT_INDENT -= 1
 
 def parse_files(files, index):
     def parse_file(file):
@@ -781,6 +968,10 @@ def parse_files(files, index):
         options = cindex.TranslationUnit.PARSE_SKIP_FUNCTION_BODIES
 
         unit = index.parse(file_path, args=args, options=options)
+
+        global PRINT_POLICY
+        if not PRINT_POLICY:
+            PRINT_POLICY = cindex.PrintingPolicy.create(unit.cursor)
 
         #print(file_path, args)
 
